@@ -1,13 +1,19 @@
+# 시스템 파일
 .DS_Store
 
+# 캐시
 __pycache__/
 *.py[cod]
+
+# 가상환경
 .venv/
 venv/
 env/
 
+# 환경변수
 .env
 
+# 로컬 자료
 .claude/
 CLAUDE.md
 PROJECT.md
