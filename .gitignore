@@ -14,9 +14,9 @@ env/
 .env
 
 # 로컬 자료
-.claude/
-CLAUDE.md
-PLAN.md
-RESULT.md
+#.claude/
+#CLAUDE.md
+#PLAN.md
+#RESULT.md
 reference/
 *.docx
