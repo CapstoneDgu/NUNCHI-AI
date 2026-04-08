@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from adapter.factory import get_spring_adapter
 from app.api import voice
 from core.exceptions import KioskError, SpringApiError
 
@@ -10,7 +11,8 @@ from core.exceptions import KioskError, SpringApiError
 async def lifespan(app: FastAPI):
     # 서버 시작 시 초기화할 것이 있으면 여기에 추가
     yield
-    # 서버 종료 시 정리할 것이 있으면 여기에 추가
+    # 공유 HTTP 클라이언트 정리
+    await get_spring_adapter().close()
 
 
 app = FastAPI(

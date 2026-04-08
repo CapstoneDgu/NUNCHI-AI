@@ -1,4 +1,7 @@
+from pydantic import ValidationError
+
 from adapter.spring_adapter import SpringAdapter
+from core.exceptions import SpringApiError
 from domain.order import OrderResult
 
 
@@ -12,4 +15,7 @@ async def confirm_order(spring: SpringAdapter, session_id: int) -> OrderResult:
         OrderResult — order_id를 보관해야 request_payment 호출 가능
     """
     data = await spring.post("/api/orders/confirm", {"sessionId": session_id})
-    return OrderResult(**data)
+    try:
+        return OrderResult(**data)
+    except ValidationError as exc:
+        raise SpringApiError("주문 확정 응답 스키마 불일치", status_code=502) from exc

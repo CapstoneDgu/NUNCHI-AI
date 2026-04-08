@@ -1,4 +1,7 @@
+from pydantic import ValidationError
+
 from adapter.spring_adapter import SpringAdapter
+from core.exceptions import SpringApiError
 from domain.payment import PaymentMethod, PaymentResult
 
 
@@ -20,4 +23,7 @@ async def request_payment(
     """
     body = {"orderId": order_id, "method": method.value}
     data = await spring.post("/api/payments", body)
-    return PaymentResult(**data)
+    try:
+        return PaymentResult(**data)
+    except ValidationError as exc:
+        raise SpringApiError("결제 응답 스키마 불일치", status_code=502) from exc

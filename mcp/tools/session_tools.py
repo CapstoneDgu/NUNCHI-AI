@@ -1,8 +1,12 @@
 from adapter.spring_adapter import SpringAdapter
-from domain.session import SessionResult
+from domain.session import SessionMode, SessionResult
 
 
-async def create_session(spring: SpringAdapter, mode: str = "AVATAR", language: str = "ko") -> SessionResult:
+async def create_session(
+    spring: SpringAdapter,
+    mode: SessionMode = SessionMode.avatar,
+    language: str = "ko",
+) -> SessionResult:
     """주문 세션 시작 — POST /api/sessions
 
     Args:
@@ -12,7 +16,7 @@ async def create_session(spring: SpringAdapter, mode: str = "AVATAR", language: 
     Returns:
         SessionResult (session_id 포함 — 이후 모든 Tool에 전달 필요)
     """
-    data = await spring.post("/api/sessions", {"mode": mode, "language": language})
+    data = await spring.post("/api/sessions", {"mode": mode.value, "language": language})
     return SessionResult(**data)
 
 
