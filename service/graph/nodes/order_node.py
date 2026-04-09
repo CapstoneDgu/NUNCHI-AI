@@ -4,7 +4,6 @@
 make_order_tools()로 생성된 Tool 목록을 LangGraph create_react_agent에 주입한다.
 """
 
-from langchain_core.messages import SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
 
@@ -23,17 +22,6 @@ _ORDER_SYSTEM_PROMPT = """
 - 메뉴명이나 가격을 임의로 만들지 말고 반드시 Tool로 조회한 결과만 사용해라.
 - 응답은 한국어로 친절하고 간결하게 해라.
 """.strip()
-
-
-def _build_order_agent(spring: SpringAdapter):
-    s = get_settings()
-    llm = ChatGoogleGenerativeAI(
-        model=s.gemini_model,
-        google_api_key=s.gemini_api_key,
-        temperature=0.3,
-    )
-    # 세션 ID는 state에서 가져오므로 노드 실행 시점에 주입
-    return llm
 
 
 async def run_order_agent(state: KioskState, spring: SpringAdapter) -> dict:

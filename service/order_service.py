@@ -45,14 +45,13 @@ class OrderService:
         thread_id를 session_id로 사용하면 LangGraph Checkpointer가
         이전 대화 상태를 자동으로 복원한다.
         """
+        # session_id와 messages, nunchi_signal만 넘긴다.
+        # order_id / payment_id / intent 등은 그래프 노드가 관리하며
+        # 매 요청마다 None으로 덮어쓰면 이전 턴에서 저장된 값이 초기화된다.
         initial_state = {
-            "messages":    [HumanMessage(content=text)],
-            "session_id":  session_id,
-            "intent":      None,
-            "order_id":    None,
-            "payment_id":  None,
-            "nunchi_signal":      nunchi_signal,
-            "recommended_menu_ids": [],
+            "messages":      [HumanMessage(content=text)],
+            "session_id":    session_id,
+            "nunchi_signal": nunchi_signal,
         }
 
         result = await self._graph.ainvoke(

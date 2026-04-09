@@ -5,8 +5,7 @@
 
 from fastapi import APIRouter, Depends
 
-from adapter.factory import get_spring_adapter
-from adapter.spring_adapter import SpringAdapter
+from adapter.factory import get_order_service
 from domain.order_request import (
     ChatOrderRequest,
     ChatOrderResponse,
@@ -16,10 +15,6 @@ from domain.order_request import (
 from service.order_service import OrderService
 
 router = APIRouter(prefix="/api/order", tags=["order"])
-
-
-def get_order_service(spring: SpringAdapter = Depends(get_spring_adapter)) -> OrderService:
-    return OrderService(spring)
 
 
 @router.post("/start", response_model=StartOrderResponse, status_code=201)
