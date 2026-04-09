@@ -1,4 +1,8 @@
+from __future__ import annotations
+
 """주문 API 요청/응답 Pydantic 모델"""
+
+from typing import Optional
 
 from pydantic import BaseModel
 
@@ -21,7 +25,7 @@ class ChatOrderRequest(BaseModel):
     """POST /api/order/chat 요청"""
     session_id: int
     text: str
-    nunchi_signal: str | None = None  # React에서 전달하는 눈치 신호 (선택)
+    nunchi_signal: Optional[str] = None  # React에서 전달하는 눈치 신호 (선택)
 
 
 class ChatOrderResponse(BaseModel):

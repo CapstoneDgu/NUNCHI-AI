@@ -1,15 +1,18 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
+from typing import Optional
 
 
 class SpringPort(ABC):
     """Spring 백엔드 연동 인터페이스"""
 
     @abstractmethod
-    async def get(self, path: str, params: dict | None = None) -> dict:
+    async def get(self, path: str, params: Optional[dict] = None) -> dict:
         ...
 
     @abstractmethod
-    async def post(self, path: str, body: dict | None = None) -> dict:
+    async def post(self, path: str, body: Optional[dict] = None) -> dict:
         ...
 
     @abstractmethod
@@ -17,7 +20,7 @@ class SpringPort(ABC):
         ...
 
     @abstractmethod
-    async def patch(self, path: str, body: dict | None = None) -> dict:
+    async def patch(self, path: str, body: Optional[dict] = None) -> dict:
         ...
 
     @abstractmethod

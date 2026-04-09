@@ -1,10 +1,14 @@
+from __future__ import annotations
+
 """OrderService — 세션 관리 + 그래프 실행 진입점
 
 LangGraph 그래프를 실행하고, Spring 세션 생성/종료를 관리한다.
 thread_id = session_id 로 LangGraph Checkpointer가 세션별 대화 상태를 자동 저장/복원한다.
 """
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from typing import Optional
+
+from langchain_core.messages import HumanMessage
 
 from adapter.spring_adapter import SpringAdapter
 from domain.order_request import ChatOrderResponse, StartOrderResponse
@@ -38,7 +42,7 @@ class OrderService:
         self,
         session_id: int,
         text: str,
-        nunchi_signal: str | None = None,
+        nunchi_signal: Optional[str] = None,
     ) -> ChatOrderResponse:
         """사용자 발화를 받아 그래프를 실행하고 AI 응답을 반환한다.
 
