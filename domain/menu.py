@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import Optional
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -50,5 +54,5 @@ class MenuDetail(BaseModel):
     name: str
     price: int
     is_sold_out: bool = Field(alias="isSoldOut")
-    image_url: str | None = Field(default=None, alias="imageUrl")
+    image_url: Optional[str] = Field(default=None, alias="imageUrl")
     option_groups: list[OptionGroup] = Field(default_factory=list, alias="optionGroups")
