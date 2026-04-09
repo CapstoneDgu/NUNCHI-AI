@@ -23,8 +23,7 @@ _PAYMENT_SYSTEM_PROMPT = """
 
 결제 수단:
 - 카드 결제 → IC_CARD
-- 카카오페이 → KAKAO_PAY
-- 네이버페이 → NAVER_PAY
+- 정맥 인증 → VEIN_AUTH
 
 규칙:
 - 결제 수단을 사용자에게 먼저 확인하고 진행해라.

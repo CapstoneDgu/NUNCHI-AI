@@ -47,6 +47,9 @@ async def classify_intent(state: KioskState) -> dict:
     if intent not in ("order", "payment", "recommend", "hesitation"):
         intent = "order"  # 분류 실패 시 기본값
 
+    import logging
+    logging.warning(f"[의도 분류] 입력: {last_message.content!r} → intent: {intent}")
+
     return {"intent": intent}
 
 
