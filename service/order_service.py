@@ -1,0 +1,64 @@
+"""OrderService — 세션 관리 + 그래프 실행 진입점
+
+LangGraph 그래프를 실행하고, Spring 세션 생성/종료를 관리한다.
+thread_id = session_id 로 LangGraph Checkpointer가 세션별 대화 상태를 자동 저장/복원한다.
+"""
+
+from langchain_core.messages import HumanMessage, SystemMessage
+
+from adapter.spring_adapter import SpringAdapter
+from domain.order_request import ChatOrderResponse, StartOrderResponse
+from domain.session import SessionMode
+from mcp.tools.session_tools import create_session
+from service.graph.kiosk_graph import build_kiosk_graph
+
+_GREETING_PROMPT = "안녕하세요! 무엇을 도와드릴까요? 메뉴를 추천해드릴까요, 아니면 직접 골라보시겠어요?"
+
+
+class OrderService:
+    def __init__(self, spring: SpringAdapter) -> None:
+        self._spring = spring
+        self._graph = build_kiosk_graph(spring)
+
+    async def start(
+        self,
+        mode: SessionMode = SessionMode.avatar,
+        language: str = "ko",
+    ) -> StartOrderResponse:
+        """Spring 세션을 생성하고 첫 인사 메시지를 반환한다."""
+        session = await create_session(self._spring, mode, language)
+
+        # 첫 인사 — LLM 호출 없이 고정 메시지로 빠르게 응답
+        return StartOrderResponse(
+            session_id=session.session_id,
+            greeting=_GREETING_PROMPT,
+        )
+
+    async def handle_chat(
+        self,
+        session_id: int,
+        text: str,
+        nunchi_signal: str | None = None,
+    ) -> ChatOrderResponse:
+        """사용자 발화를 받아 그래프를 실행하고 AI 응답을 반환한다.
+
+        thread_id를 session_id로 사용하면 LangGraph Checkpointer가
+        이전 대화 상태를 자동으로 복원한다.
+        """
+        initial_state = {
+            "messages":    [HumanMessage(content=text)],
+            "session_id":  session_id,
+            "intent":      None,
+            "order_id":    None,
+            "payment_id":  None,
+            "nunchi_signal":      nunchi_signal,
+            "recommended_menu_ids": [],
+        }
+
+        result = await self._graph.ainvoke(
+            initial_state,
+            config={"configurable": {"thread_id": str(session_id)}},
+        )
+
+        reply = result["messages"][-1].content
+        return ChatOrderResponse(session_id=session_id, reply=reply)

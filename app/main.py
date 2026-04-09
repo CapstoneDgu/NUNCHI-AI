@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from adapter.factory import get_spring_adapter
-from app.api import voice
+from app.api import order, voice
 from core.exceptions import KioskError, SpringApiError
 
 
@@ -22,6 +22,7 @@ app = FastAPI(
 )
 
 # 라우터 등록
+app.include_router(order.router)
 app.include_router(voice.router)
 
 
