@@ -9,8 +9,9 @@ class Settings(BaseSettings):
     spring_base_url: str = "http://localhost:8080"
     spring_timeout: int = Field(default=5, ge=1)  # 최소 1초 이상
 
-    # OpenAI
-    openai_api_key: str = Field(min_length=1)  # 빈 문자열 거부
+    # Gemini
+    gemini_api_key: str = Field(min_length=1)  # 빈 문자열 거부
+    gemini_model: str = "gemini-2.0-flash"
 
     model_config = SettingsConfigDict(
         env_file=".env",
