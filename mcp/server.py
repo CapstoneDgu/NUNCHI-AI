@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """MCP Tool 레지스트리
 
 LangGraph 노드에 주입할 LangChain Tool 목록을 용도별로 생성한다.
@@ -6,6 +8,7 @@ LangGraph 노드에 주입할 LangChain Tool 목록을 용도별로 생성한다
 """
 
 import json
+from typing import Optional
 
 from langchain_core.tools import tool
 
@@ -32,7 +35,7 @@ def make_order_tools(spring: SpringAdapter, session_id: int) -> list:
         return json.dumps([c.model_dump() for c in result], ensure_ascii=False)
 
     @tool
-    async def tool_get_menus(category_id: int | None = None) -> str:
+    async def tool_get_menus(category_id: Optional[int] = None) -> str:
         """메뉴 목록을 조회한다. category_id를 주면 해당 카테고리만 필터링한다."""
         result = await get_menus(spring, category_id)
         return json.dumps([m.model_dump() for m in result], ensure_ascii=False)
@@ -89,7 +92,7 @@ def make_payment_tools(spring: SpringAdapter, session_id: int) -> list:
 
     @tool
     async def tool_request_payment(order_id: int, method: str) -> str:
-        """결제를 요청한다. method는 IC_CARD / KAKAO_PAY / NAVER_PAY 중 하나다."""
+        """결제를 요청한다. method는 IC_CARD / VEIN_AUTH 중 하나다."""
         from domain.payment import PaymentMethod
         result = await request_payment(spring, order_id, PaymentMethod(method))
         return json.dumps(result.model_dump(), ensure_ascii=False)

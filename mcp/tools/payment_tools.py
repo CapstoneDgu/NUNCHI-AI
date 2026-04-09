@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+import logging
+
 from pydantic import ValidationError
 
 from adapter.spring_adapter import SpringAdapter
@@ -10,20 +14,11 @@ async def request_payment(
     order_id: int,
     method: PaymentMethod,
 ) -> PaymentResult:
-    """결제 요청 — POST /api/payments
-
-    PENDING 상태 결제를 생성한다.
-    confirm_order로 orderId를 받은 뒤에만 호출 가능하다.
-
-    Args:
-        method: IC_CARD / KAKAO_PAY / NAVER_PAY
-
-    Returns:
-        PaymentResult — payment_id 포함 (상태 조회 시 필요)
-    """
+    """결제 요청 — POST /api/payments"""
     body = {"orderId": order_id, "method": method.value}
     data = await spring.post("/api/payments", body)
     try:
-        return PaymentResult(**data)
+        return PaymentResult.model_validate(data)
     except ValidationError as exc:
+        logging.error(f"[결제 파싱 오류] data={data} | {exc}")
         raise SpringApiError("결제 응답 스키마 불일치", status_code=502) from exc

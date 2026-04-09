@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+import logging
+
 from pydantic import ValidationError
 
 from adapter.spring_adapter import SpringAdapter
@@ -10,16 +14,9 @@ async def add_cart_item(
     session_id: int,
     menu_id: int,
     quantity: int,
-    option_ids: list[int],
+    option_ids: list,
 ) -> CartResponse:
-    """장바구니 담기 — POST /api/orders/cart/items
-
-    Args:
-        option_ids: 선택 옵션 없으면 빈 배열 [] 전달 (null 불가)
-
-    Returns:
-        CartResponse — items 안의 item_id(UUID)를 보관해야 수정/삭제 가능
-    """
+    """장바구니 담기 — POST /api/orders/cart/items"""
     body = {
         "sessionId": session_id,
         "menuId": menu_id,
@@ -28,8 +25,9 @@ async def add_cart_item(
     }
     data = await spring.post("/api/orders/cart/items", body)
     try:
-        return CartResponse(**data)
+        return CartResponse.model_validate(data)
     except ValidationError as exc:
+        logging.error(f"[장바구니 담기 파싱 오류] data={data} | {exc}")
         raise SpringApiError("장바구니 담기 응답 스키마 불일치", status_code=502) from exc
 
 
@@ -37,8 +35,9 @@ async def get_cart(spring: SpringAdapter, session_id: int) -> CartResponse:
     """장바구니 전체 조회 — GET /api/orders/cart/{sessionId}"""
     data = await spring.get(f"/api/orders/cart/{session_id}")
     try:
-        return CartResponse(**data)
+        return CartResponse.model_validate(data)
     except ValidationError as exc:
+        logging.error(f"[장바구니 조회 파싱 오류] data={data} | {exc}")
         raise SpringApiError("장바구니 조회 응답 스키마 불일치", status_code=502) from exc
 
 
@@ -54,8 +53,9 @@ async def update_cart_item(
         {"quantity": quantity},
     )
     try:
-        return CartResponse(**data)
+        return CartResponse.model_validate(data)
     except ValidationError as exc:
+        logging.error(f"[장바구니 수정 파싱 오류] data={data} | {exc}")
         raise SpringApiError("장바구니 수정 응답 스키마 불일치", status_code=502) from exc
 
 
@@ -63,6 +63,7 @@ async def remove_cart_item(spring: SpringAdapter, session_id: int, item_id: str)
     """장바구니 아이템 삭제 — DELETE /api/orders/cart/{sessionId}/items/{itemId}"""
     data = await spring.delete(f"/api/orders/cart/{session_id}/items/{item_id}")
     try:
-        return CartResponse(**data)
+        return CartResponse.model_validate(data)
     except ValidationError as exc:
+        logging.error(f"[장바구니 삭제 파싱 오류] data={data} | {exc}")
         raise SpringApiError("장바구니 삭제 응답 스키마 불일치", status_code=502) from exc
