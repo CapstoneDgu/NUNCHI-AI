@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 from adapter.spring_adapter import SpringAdapter
+from domain.conversation import ConversationMessage
 from domain.session import SessionMode, SessionResult
 
 
@@ -18,6 +19,19 @@ async def create_session(
     except Exception as exc:
         logging.error(f"[세션 생성 파싱 오류] data={data} | {exc}")
         raise
+
+
+async def save_message(
+    spring: SpringAdapter,
+    session_id: int,
+    role: str,
+    text: str,
+) -> None:
+    """대화 메시지 저장 — POST /api/sessions/{sessionId}/messages"""
+    await spring.post(
+        f"/api/sessions/{session_id}/messages",
+        {"role": role, "text": text},
+    )
 
 
 async def complete_session(spring: SpringAdapter, session_id: int) -> dict:
