@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Optional
 
 import httpx
@@ -30,8 +31,7 @@ class SpringAdapter(SpringPort):
         except json.JSONDecodeError as err:
             raise SpringApiError("Spring 응답을 파싱할 수 없습니다", response.status_code) from err
 
-        import logging
-        logging.warning(f"[Spring 응답] HTTP {response.status_code} | body: {body}")
+        logging.debug("[Spring 응답] HTTP %d | path 응답 수신", response.status_code)
 
         # Spring 공통 응답은 code / msg 사용
         status = body.get("code")
