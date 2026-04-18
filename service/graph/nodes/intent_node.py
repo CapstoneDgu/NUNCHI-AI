@@ -36,6 +36,8 @@ async def classify_intent(state: KioskState) -> dict:
     """사용자 발화에서 의도를 분류해 state['intent']를 업데이트한다."""
     llm = _build_llm()
 
+    if not state["messages"]:
+        return {"intent": "order"}
     last_message = state["messages"][-1]
     if not isinstance(last_message, HumanMessage):
         return {"intent": "order"}  # 사용자 발화가 아니면 기본값

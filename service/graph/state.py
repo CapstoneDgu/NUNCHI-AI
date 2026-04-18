@@ -13,4 +13,4 @@ class KioskState(TypedDict):
     order_id: Optional[int]                  # confirm_order 후 채워짐
     payment_id: Optional[int]               # request_payment 후 채워짐
     nunchi_signal: Optional[str]             # 눈치 신호 종류 (silence/hesitation/repeat_browse)
-    recommended_menu_ids: list               # 추천된 메뉴 ID 목록
+    recommended_menu_ids: list[int]          # 추천된 메뉴 ID 목록

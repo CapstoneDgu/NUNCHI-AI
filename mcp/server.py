@@ -102,7 +102,11 @@ def make_payment_tools(spring: SpringAdapter, session_id: int) -> list:
     async def tool_request_payment(order_id: int, method: str) -> str:
         """결제를 요청한다. method는 IC_CARD / VEIN_AUTH 중 하나다."""
         from domain.payment import PaymentMethod
-        result = json.dumps((await request_payment(spring, order_id, PaymentMethod(method))).model_dump(), ensure_ascii=False)
+        try:
+            payment_method = PaymentMethod(method)
+        except ValueError:
+            return f"지원하지 않는 결제 수단입니다: {method}. IC_CARD 또는 VEIN_AUTH 중 하나를 선택해주세요."
+        result = json.dumps((await request_payment(spring, order_id, payment_method)).model_dump(), ensure_ascii=False)
         return await _log_tool("request_payment", {"order_id": order_id, "method": method}, result)
 
     @tool

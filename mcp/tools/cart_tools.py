@@ -14,7 +14,7 @@ async def add_cart_item(
     session_id: int,
     menu_id: int,
     quantity: int,
-    option_ids: list,
+    option_ids: list[int],
 ) -> CartResponse:
     """장바구니 담기 — POST /api/orders/cart/items"""
     body = {
