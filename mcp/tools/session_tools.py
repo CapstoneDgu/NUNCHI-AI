@@ -34,6 +34,23 @@ async def save_message(
     )
 
 
+async def save_tool_log(
+    spring: SpringAdapter,
+    session_id: int,
+    tool_name: str,
+    request: str,
+    response: str,
+) -> None:
+    """AI 툴 호출 로그 저장 — POST /api/sessions/{sessionId}/tool-logs"""
+    try:
+        await spring.post(
+            f"/api/sessions/{session_id}/tool-logs",
+            {"toolName": tool_name, "request": request, "response": response},
+        )
+    except Exception as exc:
+        logging.warning(f"[툴 로그 저장 실패] tool={tool_name} session={session_id} | {exc}")
+
+
 async def complete_session(spring: SpringAdapter, session_id: int) -> dict:
     """주문 세션 종료 — PATCH /api/sessions/{sessionId}/complete"""
     logging.warning(f"[세션 종료 호출] session_id={session_id}")

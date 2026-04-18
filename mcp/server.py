@@ -19,56 +19,60 @@ from mcp.tools.cart_tools import (
     remove_cart_item,
     update_cart_item,
 )
-from mcp.tools.menu_tools import get_categories, get_menu_detail, get_menus
+from mcp.tools.menu_tools import get_categories, get_menu_detail, get_menus, get_top_menus
 from mcp.tools.order_tools import confirm_order
 from mcp.tools.payment_tools import request_payment
-from mcp.tools.session_tools import complete_session
+from mcp.tools.session_tools import complete_session, save_tool_log
 
 
 def make_order_tools(spring: SpringAdapter, session_id: int) -> list:
     """주문/장바구니 관련 Tool 목록 생성"""
 
+    async def _log_tool(name: str, req: dict, result: str) -> str:
+        await save_tool_log(spring, session_id, name, json.dumps(req, ensure_ascii=False), result)
+        return result
+
     @tool
     async def tool_get_categories() -> str:
         """카테고리 목록을 조회한다."""
-        result = await get_categories(spring)
-        return json.dumps([c.model_dump() for c in result], ensure_ascii=False)
+        result = json.dumps([c.model_dump() for c in await get_categories(spring)], ensure_ascii=False)
+        return await _log_tool("get_categories", {}, result)
 
     @tool
     async def tool_get_menus(category_id: Optional[int] = None) -> str:
         """메뉴 목록을 조회한다. category_id를 주면 해당 카테고리만 필터링한다."""
-        result = await get_menus(spring, category_id)
-        return json.dumps([m.model_dump() for m in result], ensure_ascii=False)
+        result = json.dumps([m.model_dump() for m in await get_menus(spring, category_id)], ensure_ascii=False)
+        return await _log_tool("get_menus", {"category_id": category_id}, result)
 
     @tool
     async def tool_get_menu_detail(menu_id: int) -> str:
         """메뉴 상세 정보와 옵션을 조회한다. 장바구니 담기 전 반드시 호출해야 한다."""
-        result = await get_menu_detail(spring, menu_id)
-        return json.dumps(result.model_dump(), ensure_ascii=False)
+        result = json.dumps((await get_menu_detail(spring, menu_id)).model_dump(), ensure_ascii=False)
+        return await _log_tool("get_menu_detail", {"menu_id": menu_id}, result)
 
     @tool
     async def tool_add_cart_item(menu_id: int, quantity: int, option_ids: list[int]) -> str:
         """장바구니에 메뉴를 담는다. 옵션 없으면 option_ids는 빈 배열로 전달한다."""
-        result = await add_cart_item(spring, session_id, menu_id, quantity, option_ids)
-        return json.dumps(result.model_dump(), ensure_ascii=False)
+        result = json.dumps((await add_cart_item(spring, session_id, menu_id, quantity, option_ids)).model_dump(), ensure_ascii=False)
+        return await _log_tool("add_to_cart", {"menu_id": menu_id, "quantity": quantity, "option_ids": option_ids}, result)
 
     @tool
     async def tool_get_cart() -> str:
         """현재 장바구니 전체를 조회한다."""
-        result = await get_cart(spring, session_id)
-        return json.dumps(result.model_dump(), ensure_ascii=False)
+        result = json.dumps((await get_cart(spring, session_id)).model_dump(), ensure_ascii=False)
+        return await _log_tool("get_cart", {}, result)
 
     @tool
     async def tool_update_cart_item(item_id: str, quantity: int) -> str:
         """장바구니 아이템 수량을 수정한다. item_id는 장바구니 조회 결과의 item_id(UUID)다."""
-        result = await update_cart_item(spring, session_id, item_id, quantity)
-        return json.dumps(result.model_dump(), ensure_ascii=False)
+        result = json.dumps((await update_cart_item(spring, session_id, item_id, quantity)).model_dump(), ensure_ascii=False)
+        return await _log_tool("update_cart_item", {"item_id": item_id, "quantity": quantity}, result)
 
     @tool
     async def tool_remove_cart_item(item_id: str) -> str:
         """장바구니 아이템을 삭제한다. item_id는 장바구니 조회 결과의 item_id(UUID)다."""
-        result = await remove_cart_item(spring, session_id, item_id)
-        return json.dumps(result.model_dump(), ensure_ascii=False)
+        result = json.dumps((await remove_cart_item(spring, session_id, item_id)).model_dump(), ensure_ascii=False)
+        return await _log_tool("remove_cart_item", {"item_id": item_id}, result)
 
     return [
         tool_get_categories,
@@ -84,24 +88,28 @@ def make_order_tools(spring: SpringAdapter, session_id: int) -> list:
 def make_payment_tools(spring: SpringAdapter, session_id: int) -> list:
     """결제 관련 Tool 목록 생성"""
 
+    async def _log_tool(name: str, req: dict, result: str) -> str:
+        await save_tool_log(spring, session_id, name, json.dumps(req, ensure_ascii=False), result)
+        return result
+
     @tool
     async def tool_confirm_order() -> str:
         """장바구니를 주문으로 확정한다. 결제 전 반드시 호출해야 한다."""
-        result = await confirm_order(spring, session_id)
-        return json.dumps(result.model_dump(), ensure_ascii=False)
+        result = json.dumps((await confirm_order(spring, session_id)).model_dump(), ensure_ascii=False)
+        return await _log_tool("confirm_order", {}, result)
 
     @tool
     async def tool_request_payment(order_id: int, method: str) -> str:
         """결제를 요청한다. method는 IC_CARD / VEIN_AUTH 중 하나다."""
         from domain.payment import PaymentMethod
-        result = await request_payment(spring, order_id, PaymentMethod(method))
-        return json.dumps(result.model_dump(), ensure_ascii=False)
+        result = json.dumps((await request_payment(spring, order_id, PaymentMethod(method))).model_dump(), ensure_ascii=False)
+        return await _log_tool("request_payment", {"order_id": order_id, "method": method}, result)
 
     @tool
     async def tool_complete_session() -> str:
         """주문 세션을 종료한다. 결제 완료 후 호출한다."""
-        result = await complete_session(spring, session_id)
-        return json.dumps(result, ensure_ascii=False)
+        result = json.dumps(await complete_session(spring, session_id), ensure_ascii=False)
+        return await _log_tool("complete_session", {}, result)
 
     return [
         tool_confirm_order,
@@ -110,27 +118,30 @@ def make_payment_tools(spring: SpringAdapter, session_id: int) -> list:
     ]
 
 
-def make_recommend_tools(spring: SpringAdapter) -> list:
+def make_recommend_tools(spring: SpringAdapter, session_id: int) -> list:
     """추천 관련 Tool 목록 생성"""
 
+    async def _log_tool(name: str, req: dict, result: str) -> str:
+        await save_tool_log(spring, session_id, name, json.dumps(req, ensure_ascii=False), result)
+        return result
+
     @tool
-    async def tool_get_top_menus() -> str:
-        """오늘 가장 많이 팔린 인기 메뉴 목록을 반환한다."""
-        # TODO: Spring 인기 메뉴 API 연동 (get_top_menus 구현 후 교체)
-        result = await get_menus(spring)
-        return json.dumps([m.model_dump() for m in result[:5]], ensure_ascii=False)
+    async def tool_get_top_menus(limit: int = 5) -> str:
+        """오늘 판매량 기준 인기 메뉴 목록을 반환한다. limit으로 개수를 조절한다."""
+        result = json.dumps([m.model_dump() for m in await get_top_menus(spring, limit)], ensure_ascii=False)
+        return await _log_tool("get_top_menus", {"limit": limit}, result)
 
     @tool
     async def tool_get_menus_by_category(category_id: int) -> str:
         """특정 카테고리의 메뉴 목록을 반환한다."""
-        result = await get_menus(spring, category_id)
-        return json.dumps([m.model_dump() for m in result], ensure_ascii=False)
+        result = json.dumps([m.model_dump() for m in await get_menus(spring, category_id)], ensure_ascii=False)
+        return await _log_tool("get_menus_by_category", {"category_id": category_id}, result)
 
     @tool
     async def tool_get_menu_detail_recommend(menu_id: int) -> str:
         """추천할 메뉴의 상세 정보를 조회한다."""
-        result = await get_menu_detail(spring, menu_id)
-        return json.dumps(result.model_dump(), ensure_ascii=False)
+        result = json.dumps((await get_menu_detail(spring, menu_id)).model_dump(), ensure_ascii=False)
+        return await _log_tool("get_menu_detail", {"menu_id": menu_id}, result)
 
     return [
         tool_get_top_menus,

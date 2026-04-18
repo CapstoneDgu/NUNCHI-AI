@@ -34,7 +34,7 @@ async def run_recommend_agent(state: KioskState, spring: SpringAdapter) -> dict:
         temperature=0.5,  # 추천은 약간의 다양성 허용
     )
 
-    tools = make_recommend_tools(spring)
+    tools = make_recommend_tools(spring, state["session_id"])
     agent = create_react_agent(llm, tools, prompt=_RECOMMEND_SYSTEM_PROMPT)
 
     result = await agent.ainvoke({"messages": state["messages"]})

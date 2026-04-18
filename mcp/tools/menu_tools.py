@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from adapter.spring_adapter import SpringAdapter
 from core.exceptions import SpringApiError
-from domain.menu import Category, MenuDetail, MenuSummary
+from domain.menu import Category, MenuDetail, MenuSummary, TopMenuSummary
 
 
 async def get_categories(spring: SpringAdapter) -> list[Category]:
@@ -27,6 +27,15 @@ async def get_menus(spring: SpringAdapter, category_id: Optional[int] = None) ->
         return [MenuSummary.model_validate(item) for item in data]
     except ValidationError as exc:
         raise SpringApiError("메뉴 목록 응답 스키마 불일치", status_code=502) from exc
+
+
+async def get_top_menus(spring: SpringAdapter, limit: int = 5) -> list[TopMenuSummary]:
+    """오늘 판매량 기준 인기 메뉴 조회 — GET /api/menus/top?limit={limit}"""
+    data = await spring.get("/api/menus/top", params={"limit": limit})
+    try:
+        return [TopMenuSummary.model_validate(item) for item in data]
+    except ValidationError as exc:
+        raise SpringApiError("인기 메뉴 응답 스키마 불일치", status_code=502) from exc
 
 
 async def get_menu_detail(spring: SpringAdapter, menu_id: int) -> MenuDetail:

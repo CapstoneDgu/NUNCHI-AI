@@ -45,6 +45,18 @@ class MenuSummary(BaseModel):
     is_sold_out: bool = Field(alias="isSoldOut")
 
 
+class TopMenuSummary(BaseModel):
+    """GET /api/menus/top 응답 항목 (오늘 판매량 포함)"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    menu_id: int = Field(alias="menuId")
+    name: str
+    price: int
+    quantity_sold: int = Field(alias="quantitySold")
+    is_sold_out: bool = Field(alias="isSoldOut")
+
+
 class MenuDetail(BaseModel):
     """GET /api/menus/{menuId} 응답 (상세 + 옵션)"""
 
