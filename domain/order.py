@@ -8,7 +8,7 @@ from domain.cart import CartItem, CartItemOption
 
 
 class OrderStatus(str, Enum):
-    confirmed = "CONFIRMED"
+    pending   = "PENDING"
     completed = "COMPLETED"
     cancelled = "CANCELLED"
 
