@@ -130,6 +130,12 @@ def make_recommend_tools(spring: SpringAdapter, session_id: int) -> list:
         return result
 
     @tool
+    async def tool_get_all_menus() -> str:
+        """전체 메뉴 목록을 반환한다. 칼로리·매운맛·알레르기·채식·계절·온도 기준 추천 시 사용한다."""
+        result = json.dumps([m.model_dump() for m in await get_menus(spring)], ensure_ascii=False)
+        return await _log_tool("get_all_menus", {}, result)
+
+    @tool
     async def tool_get_top_menus(limit: int = 5) -> str:
         """오늘 판매량 기준 인기 메뉴 목록을 반환한다. limit으로 개수를 조절한다."""
         result = json.dumps([m.model_dump() for m in await get_top_menus(spring, limit)], ensure_ascii=False)
@@ -148,6 +154,7 @@ def make_recommend_tools(spring: SpringAdapter, session_id: int) -> list:
         return await _log_tool("get_menu_detail", {"menu_id": menu_id}, result)
 
     return [
+        tool_get_all_menus,
         tool_get_top_menus,
         tool_get_menus_by_category,
         tool_get_menu_detail_recommend,
