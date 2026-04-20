@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SessionMode(str, Enum):
@@ -17,8 +17,10 @@ class SessionStatus(str, Enum):
 class SessionResult(BaseModel):
     """POST /api/sessions 응답"""
 
-    session_id: int
+    model_config = ConfigDict(populate_by_name=True)
+
+    session_id: int = Field(alias="sessionId")
     mode: SessionMode
     status: SessionStatus
     language: str
-    created_at: datetime
+    created_at: datetime = Field(alias="createdAt")

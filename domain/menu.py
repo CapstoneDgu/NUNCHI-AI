@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import Optional
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -41,6 +45,18 @@ class MenuSummary(BaseModel):
     is_sold_out: bool = Field(alias="isSoldOut")
 
 
+class TopMenuSummary(BaseModel):
+    """GET /api/menus/top 응답 항목 (오늘 판매량 포함)"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    menu_id: int = Field(alias="menuId")
+    name: str
+    price: int
+    quantity_sold: int = Field(alias="quantitySold")
+    is_sold_out: bool = Field(alias="isSoldOut")
+
+
 class MenuDetail(BaseModel):
     """GET /api/menus/{menuId} 응답 (상세 + 옵션)"""
 
@@ -50,5 +66,5 @@ class MenuDetail(BaseModel):
     name: str
     price: int
     is_sold_out: bool = Field(alias="isSoldOut")
-    image_url: str | None = Field(default=None, alias="imageUrl")
+    image_url: Optional[str] = Field(default=None, alias="imageUrl")
     option_groups: list[OptionGroup] = Field(default_factory=list, alias="optionGroups")

@@ -1,4 +1,8 @@
+from __future__ import annotations
+
 import json
+import logging
+from typing import Optional
 
 import httpx
 
@@ -21,29 +25,32 @@ class SpringAdapter(SpringPort):
         await self._client.aclose()
 
     def _parse(self, response: httpx.Response) -> dict:
-        """Spring 공통 응답 { code, msg, data } 파싱"""
+        """Spring 공통 응답 파싱"""
         try:
             body = response.json()
         except json.JSONDecodeError as err:
             raise SpringApiError("Spring 응답을 파싱할 수 없습니다", response.status_code) from err
 
-        code = body.get("code")
-        if code not in (200, 201):
+        logging.debug("[Spring 응답] HTTP %d | path 응답 수신", response.status_code)
+
+        # Spring 공통 응답은 code / msg 사용
+        status = body.get("code")
+        if status not in (200, 201):
             raise SpringApiError(
                 message=body.get("msg", "Spring API 오류"),
-                status_code=code or response.status_code,
+                status_code=status or response.status_code,
             )
 
         return body.get("data") or {}
 
-    async def get(self, path: str, params: dict | None = None) -> dict:
+    async def get(self, path: str, params: Optional[dict] = None) -> dict:
         try:
             response = await self._client.get(path, params=params)
             return self._parse(response)
         except httpx.TimeoutException:
             raise SpringApiTimeoutError() from None
 
-    async def post(self, path: str, body: dict | None = None) -> dict:
+    async def post(self, path: str, body: Optional[dict] = None) -> dict:
         try:
             response = await self._client.post(path, json=body)
             return self._parse(response)
@@ -57,7 +64,7 @@ class SpringAdapter(SpringPort):
         except httpx.TimeoutException:
             raise SpringApiTimeoutError() from None
 
-    async def patch(self, path: str, body: dict | None = None) -> dict:
+    async def patch(self, path: str, body: Optional[dict] = None) -> dict:
         try:
             response = await self._client.patch(path, json=body)
             return self._parse(response)

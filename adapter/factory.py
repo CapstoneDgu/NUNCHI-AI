@@ -13,3 +13,9 @@ def get_spring_adapter() -> SpringAdapter:
 @lru_cache
 def get_openai_adapter() -> OpenAIAdapter:
     return OpenAIAdapter(get_settings())
+
+
+@lru_cache
+def get_order_service() -> "OrderService":
+    from service.order_service import OrderService
+    return OrderService(get_spring_adapter())
