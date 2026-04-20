@@ -1,203 +1,233 @@
-# 초기 폴더 구조 세팅 계획
-
-> 목표: Spring 연동을 바로 시작할 수 있는 FastAPI 최소 골격 구성
+# Spring DB 구조 변경 반영 계획
 
 ---
 
-## 생성할 파일 전체 목록
+## 변경 범위 요약
 
-```text
-capstone_ai/
-├── app/
-│   ├── __init__.py
-│   ├── main.py
-│   └── api/
-│       ├── __init__.py
-│       └── voice.py
-│
-├── service/
-│   ├── __init__.py
-│   ├── agent_service.py
-│   └── voice_pipeline.py
-│
-├── adapter/
-│   ├── __init__.py
-│   ├── ports.py
-│   ├── factory.py
-│   ├── openai_adapter.py
-│   └── spring_adapter.py
-│
-├── mcp/
-│   ├── __init__.py
-│   ├── server.py
-│   └── tools/
-│       ├── __init__.py
-│       ├── session_tools.py
-│       ├── menu_tools.py
-│       ├── cart_tools.py
-│       ├── order_tools.py
-│       └── payment_tools.py
-│
-├── domain/
-│   ├── __init__.py
-│   ├── session.py
-│   ├── menu.py
-│   ├── cart.py
-│   ├── order.py
-│   └── payment.py
-│
-├── core/
-│   ├── __init__.py
-│   ├── config.py
-│   └── exceptions.py
-│
-├── .env.example
-└── requirements.txt
+Spring DB 구조 및 API 스펙이 업데이트됨에 따라 FastAPI 쪽 도메인 모델, MCP Tool, AI 추천 로직을 맞춰 수정한다.
+
+---
+
+## 1. `domain/menu.py` — 대폭 확장 (가장 큰 변경)
+
+### 1-1. `Nutrition` 서브모델 신규 추가
+
+Spring `MenuDetailResponse.nutrition` 응답 구조에 맞게 Pydantic 모델 추가.
+
+```python
+class Nutrition(BaseModel):
+    calorie: int
+    protein: float
+    carbohydrate: float
+    fat: float
+    sodium: int
+    sugar: float
+    trans_fat: float = Field(alias="transFat")
+    cholesterol: int
+    dietary_fiber: float = Field(alias="dietaryFiber")
+```
+
+### 1-2. `OptionGroup`에 필드 추가
+
+Spring DB에 `is_required`, `max_select` 컬럼이 있음. 현재 모델에 누락.
+
+```python
+class OptionGroup(BaseModel):
+    group_id: int = Field(alias="groupId")
+    group_name: str = Field(alias="groupName")
+    is_required: bool = Field(alias="isRequired")
+    max_select: int = Field(alias="maxSelect")
+    options: list[Option] = Field(default_factory=list)
+```
+
+### 1-3. `MenuDetail`에 신규 필드 추가
+
+AI 추천 시나리오에서 핵심적으로 사용하는 필드들.
+
+```python
+class MenuDetail(BaseModel):
+    # 기존 필드 유지
+    menu_id: int
+    name: str
+    price: int
+    is_sold_out: bool
+    image_url: Optional[str]
+    option_groups: list[OptionGroup]
+    # 신규 추가
+    nutrition: Optional[Nutrition] = None
+    allergies: list[str] = Field(default_factory=list)   # ["WHEAT", "SOY", ...]
+    spicy_level: int = Field(default=0, alias="spicyLevel")
+    temperature_type: str = Field(default="HOT", alias="temperatureType")   # HOT/COLD/BOTH
+    vegetarian_type: str = Field(default="NONE", alias="vegetarianType")    # NONE/VEGETARIAN/VEGAN
+    season_recommended: str = Field(default="ALL", alias="seasonRecommended")
+    origin_info: Optional[str] = Field(default=None, alias="originInfo")
+```
+
+### 1-4. `MenuSummary`에 AI 필터링용 필드 추가
+
+GET /api/menus 목록 응답에도 spicyLevel, temperatureType 등이 포함될 수 있음.
+Spring 팀과 협의해 목록 응답에 추천 필터 필드를 포함하도록 요청한다.
+추가될 필드:
+
+```python
+class MenuSummary(BaseModel):
+    # 기존 유지
+    menu_id: int
+    name: str
+    price: int
+    is_sold_out: bool
+    # 신규 추가 (Spring 목록 API 응답에 포함 요청)
+    spicy_level: int = Field(default=0, alias="spicyLevel")
+    temperature_type: str = Field(default="HOT", alias="temperatureType")
+    vegetarian_type: str = Field(default="NONE", alias="vegetarianType")
+    season_recommended: str = Field(default="ALL", alias="seasonRecommended")
+    allergies: list[str] = Field(default_factory=list)
+    calorie: Optional[int] = None   # 목록에서 칼로리만 바로 노출
+```
+
+> Spring 팀 요청 필요: GET /api/menus 목록 응답에 spicyLevel, temperatureType, vegetarianType, seasonRecommended, allergies, calorie 포함
+
+---
+
+## 2. `domain/order.py` — OrderStatus 수정
+
+DB 스펙: `PENDING / COMPLETED / CANCELLED`
+현재 코드: `CONFIRMED / COMPLETED / CANCELLED` → `CONFIRMED`가 잘못됨.
+
+```python
+class OrderStatus(str, Enum):
+    pending   = "PENDING"     # CONFIRMED → PENDING 으로 교체
+    completed = "COMPLETED"
+    cancelled = "CANCELLED"
+```
+
+---
+
+## 3. `domain/payment.py` — PaymentStatus 수정
+
+DB 스펙: `PENDING / SUCCESS / FAILED`
+현재 코드: `fail = "FAIL"` → `"FAILED"` 로 변경.
+
+```python
+class PaymentStatus(str, Enum):
+    pending = "PENDING"
+    success = "SUCCESS"
+    failed  = "FAILED"   # FAIL → FAILED
+```
+
+---
+
+## 4. `domain/session.py` — SessionStatus 수정
+
+DB 스펙: `ACTIVE / COMPLETED / EXPIRED`
+현재 코드: EXPIRED 누락.
+
+```python
+class SessionStatus(str, Enum):
+    active    = "ACTIVE"
+    completed = "COMPLETED"
+    expired   = "EXPIRED"   # 신규 추가
+```
+
+---
+
+## 5. `domain/conversation.py` — 필드명 확인
+
+현재 코드는 `text` 필드 사용. DB 컬럼명은 `content`.
+Spring API 응답 JSON 필드명이 `content`로 변경됐는지 Spring 팀에 확인 후 반영.
+
+변경 예시 (Spring 확인 후):
+```python
+class ConversationMessage(BaseModel):
+    message_id: int = Field(alias="messageId")
+    session_id: int = Field(alias="sessionId")
+    role: str
+    content: str   # text → content 로 변경
+    created_at: datetime = Field(alias="createdAt")
+```
+
+---
+
+## 6. `service/graph/nodes/recommend_node.py` — 시스템 프롬프트 확장
+
+새 필드(영양정보, 알레르기, 매운맛, 채식, 계절, 온도)를 활용하는 추천 지침 추가.
+
+```python
+_RECOMMEND_SYSTEM_PROMPT = """
+너는 키오스크 메뉴 추천 AI 어시스턴트다.
+실제 메뉴 데이터를 기반으로 사용자에게 메뉴를 추천해줘.
+
+규칙:
+- 반드시 Tool로 조회한 실제 메뉴 데이터를 기반으로 추천해라. 임의로 메뉴를 만들지 마라.
+- 추천할 때는 메뉴명과 가격을 함께 알려줘라.
+- 추천 이유를 간단히 덧붙여줘라. (예: "오늘 가장 많이 팔린 메뉴예요")
+- 추천 후 "장바구니에 담아드릴까요?" 로 자연스럽게 주문으로 유도해라.
+- 응답은 한국어로 친절하고 간결하게 해라.
+
+사용자 발화 → 활용 필드 매핑:
+- "칼로리 낮은 거" → nutrition.calorie 낮은 순 필터
+- "매운 거 / 안 매운 거" → spicyLevel 높음/0 필터
+- "알레르기 있어" → allergies 제외 필터
+- "채식 / 비건" → vegetarianType = VEGETARIAN / VEGAN 필터
+- "따뜻한 거 / 시원한 거" → temperatureType = HOT / COLD 필터
+- "여름 메뉴 / 봄 메뉴" → seasonRecommended 필터
+- "단백질 많은 거" → nutrition.protein 높은 순 필터
+- "나트륨 낮은 거" → nutrition.sodium 낮은 순 필터
+""".strip()
 ```
 
 ---
 
 ## 작업 순서
 
-### Step 1. core/ — 기반부터
-
-**`core/config.py`**
-- `pydantic-settings` 기반 `Settings` 클래스
-- `SPRING_BASE_URL`, `SPRING_TIMEOUT`, `OPENAI_API_KEY` 포함
-- `get_settings()` 함수로 싱글턴 반환
-
-**`core/exceptions.py`**
-- `KioskError` (베이스)
-- `SpringApiError`, `SpringApiTimeoutError`
-- `OrderNotConfirmedError`, `PaymentAlreadyExistsError`
-- `SttError`, `TtsError`, `AgentLoopLimitError`
+| 순서 | 파일 | 작업 내용 |
+|------|------|----------|
+| 1 | `domain/menu.py` | Nutrition 모델 추가, OptionGroup/MenuDetail/MenuSummary 확장 |
+| 2 | `domain/order.py` | OrderStatus.confirmed → pending 수정 |
+| 3 | `domain/payment.py` | PaymentStatus.fail → failed 수정 |
+| 4 | `domain/session.py` | SessionStatus.expired 추가 |
+| 5 | `domain/conversation.py` | Spring 확인 후 content 필드 반영 |
+| 6 | `service/graph/nodes/recommend_node.py` | 시스템 프롬프트 확장 |
 
 ---
 
-### Step 2. domain/ — Spring 응답 기준 Pydantic 모델
+## Spring 팀 확인 필요 사항
 
-**`domain/session.py`**
-- `SessionMode` Enum: `NORMAL`, `AVATAR`
-- `SessionStatus` Enum: `ACTIVE`, `COMPLETED`
-- `SessionResult` 모델: `session_id`, `mode`, `status`, `language`, `created_at`
-
-**`domain/menu.py`**
-- `Option` 모델: `option_id`, `name`, `extra_price`
-- `OptionGroup` 모델: `group_id`, `group_name`, `options`
-- `MenuSummary` 모델: `menu_id`, `name`, `price`, `is_sold_out`
-- `MenuDetail` 모델: `MenuSummary` 확장 + `image_url`, `option_groups`
-- `Category` 모델: `category_id`, `name`
-
-**`domain/cart.py`**
-- `CartItemOption` 모델: `option_id`, `option_name`, `extra_price`
-- `CartItem` 모델: `item_id`, `menu_id`, `menu_name`, `unit_price`, `quantity`, `item_total`, `options`
-- `CartResponse` 모델: `session_id`, `items`, `total_amount`
-
-**`domain/order.py`**
-- `OrderStatus` Enum: `COMPLETED`, `CANCELLED`
-- `OrderResult` 모델: `order_id`, `session_id`, `total_amount`, `order_status`, `items`
-
-**`domain/payment.py`**
-- `PaymentMethod` Enum: `IC_CARD`, `KAKAO_PAY`, `NAVER_PAY`
-- `PaymentStatus` Enum: `PENDING`, `SUCCESS`, `FAIL`
-- `PaymentResult` 모델: `payment_id`, `order_id`, `method`, `status`, `created_at`
+- [ ] GET /api/menus 목록 응답에 spicyLevel, temperatureType, vegetarianType, seasonRecommended, allergies, calorie 포함 요청
+- [ ] POST /api/sessions/{sessionId}/messages 응답에서 `text` 필드명이 `content`로 변경됐는지 확인
 
 ---
 
-### Step 3. adapter/ — Spring 연동 핵심
+## 나중에 할 것 (미구현 사항)
 
-**`adapter/ports.py`**
-- `SpringPort` 추상 인터페이스 (ABC)
-- `get`, `post`, `put`, `patch`, `delete` 추상 메서드 정의
+### 1. 결제 성공/실패 처리 Tool 추가
 
-**`adapter/spring_adapter.py`**
-- `SpringAdapter(SpringPort)` 구현
-- HTTPX `AsyncClient` 기반 비동기 HTTP 클라이언트
-- `SPRING_BASE_URL`, `SPRING_TIMEOUT`은 `Settings`에서 주입
-- Spring 공통 응답 `{ code, msg, data }` 파싱 내부 처리
-- `code`가 비정상이면 `SpringApiError`로 변환
-- 타임아웃은 `SpringApiTimeoutError`로 변환
+Spring API는 있는데 FastAPI에 연결이 안 된 상태.
 
-**`adapter/openai_adapter.py`**
-- 골격만 작성 (메서드 시그니처 + `pass`)
-- `transcribe`, `chat`, `speak` 메서드
+| 작업 | 파일 | 내용 |
+|------|------|------|
+| 함수 추가 | `mcp/tools/payment_tools.py` | `payment_success(spring, payment_id)` — PATCH /api/payments/{id}/success |
+| 함수 추가 | `mcp/tools/payment_tools.py` | `payment_fail(spring, payment_id)` — PATCH /api/payments/{id}/fail |
+| Tool 등록 | `mcp/server.py` | `make_payment_tools`에 `tool_payment_success`, `tool_payment_fail` 추가 |
+| 프롬프트 수정 | `service/graph/nodes/payment_node.py` | 결제 순서에 success/fail 처리 단계 추가 |
 
-**`adapter/factory.py`**
-- `get_spring_adapter()` 의존성 주입 함수
-- FastAPI `Depends`와 연결되는 팩토리
+현재 결제 흐름: `confirm_order` → `request_payment` → `complete_session`
+수정 후 흐름: `confirm_order` → `request_payment` → 하드웨어 대기 → `payment_success/fail` → `complete_session`
 
----
+### 2. 주문 취소 Tool 추가
 
-### Step 4. mcp/tools/ — Tool 골격 (Spring Adapter 주입 구조만)
+"주문 취소해줘" 발화 처리 불가 상태.
 
-각 Tool 파일은 함수 시그니처와 docstring만 작성. 내부 로직은 다음 단계에서 채운다.
+| 작업 | 파일 | 내용 |
+|------|------|------|
+| 함수 추가 | `mcp/tools/order_tools.py` | `cancel_order(spring, order_id)` — PATCH /api/orders/{orderId}/cancel |
+| Tool 등록 | `mcp/server.py` | `make_order_tools`에 `tool_cancel_order` 추가 |
 
-**`mcp/tools/session_tools.py`** — `create_session`, `complete_session`
-**`mcp/tools/menu_tools.py`** — `get_categories`, `get_menus`, `get_menu_detail`
-**`mcp/tools/cart_tools.py`** — `add_cart_item`, `get_cart`, `update_cart_item`, `remove_cart_item`
-**`mcp/tools/order_tools.py`** — `confirm_order`
-**`mcp/tools/payment_tools.py`** — `request_payment`
+### 3. MenuSummary에 단백질/나트륨/지방 필드 추가
 
-**`mcp/server.py`**
-- MCP 서버 등록 진입점 골격만 작성
+Spring GET /api/menus 응답에 protein, sodium, fat 추가 요청 후 반영.
 
----
-
-### Step 5. service/ — 골격만
-
-**`service/agent_service.py`** — LLM Tool 실행 흐름 골격 (pass)
-**`service/voice_pipeline.py`** — STT → Agent → TTS 파이프라인 골격 (pass)
-
----
-
-### Step 6. app/ — FastAPI 앱
-
-**`app/main.py`**
-- `FastAPI()` 앱 생성
-- `lifespan`으로 AsyncClient 수명 관리
-- `/health` 엔드포인트
-- `app/api/` 라우터 등록
-
-**`app/api/voice.py`**
-- 라우터 골격만 (`/api/voice` prefix)
-
----
-
-### Step 7. 설정 파일
-
-**`.env.example`**
-```
-SPRING_BASE_URL=http://localhost:8080
-SPRING_TIMEOUT=5
-OPENAI_API_KEY=sk-...
-```
-
-**`requirements.txt`**
-```
-fastapi
-uvicorn[standard]
-httpx
-openai
-pydantic
-pydantic-settings
-python-dotenv
-```
-
----
-
-## 완료 기준
-
-- `uvicorn app.main:app --reload` 실행 시 서버 기동
-- `GET /health` → `{"status": "ok"}` 응답
-- 각 폴더에 `__init__.py` 존재, import 에러 없음
-- `spring_adapter.py`가 실제 HTTPX 클라이언트를 들고 있음
-- domain 모델이 Spring 응답 구조와 일치함
-
----
-
-## 다음 단계 (이번 세팅 이후)
-
-1. `spring_adapter.py` 실제 Spring API 호출 연결
-2. MCP Tool 함수 내부 로직 구현
-3. `agent_service.py` LLM + Tool 체이닝 구현
-4. 음성 파이프라인 연결
+| 작업 | 파일 | 내용 |
+|------|------|------|
+| Spring 요청 | - | GET /api/menus 응답에 protein, sodium, fat 포함 요청 |
+| 모델 수정 | `domain/menu.py` | MenuSummary에 protein, sodium, fat 필드 추가 |
