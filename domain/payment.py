@@ -14,7 +14,7 @@ class PaymentMethod(str, Enum):
 class PaymentStatus(str, Enum):
     pending = "PENDING"
     success = "SUCCESS"
-    fail    = "FAIL"
+    failed  = "FAILED"
 
 
 class PaymentResult(BaseModel):

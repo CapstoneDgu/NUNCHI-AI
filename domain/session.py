@@ -10,8 +10,9 @@ class SessionMode(str, Enum):
 
 
 class SessionStatus(str, Enum):
-    active = "ACTIVE"
+    active    = "ACTIVE"
     completed = "COMPLETED"
+    expired   = "EXPIRED"
 
 
 class SessionResult(BaseModel):
