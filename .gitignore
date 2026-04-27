@@ -20,3 +20,8 @@ PLAN.md
 RESULT.md
 reference/
 *.docx
+.env
+*.pem
+.venv/
+__pycache__/
+*.pyc
