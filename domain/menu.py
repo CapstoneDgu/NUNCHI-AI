@@ -31,8 +31,8 @@ class OptionGroup(BaseModel):
 
     group_id: int = Field(alias="groupId")
     group_name: str = Field(alias="groupName")
-    is_required: bool = Field(alias="isRequired")
-    max_select: int = Field(alias="maxSelect")
+    is_required: bool = Field(default=False, alias="isRequired")
+    max_select: int = Field(default=1, alias="maxSelect")
     options: list[Option] = Field(default_factory=list)
 
 

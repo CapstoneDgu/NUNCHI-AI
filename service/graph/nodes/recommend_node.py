@@ -4,7 +4,7 @@
 눈치 감지 노드(nunchi_node)에서도 이 노드로 연결된다.
 """
 
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
 from adapter.spring_adapter import SpringAdapter
@@ -59,10 +59,10 @@ Tool 선택 기준:
 async def run_recommend_agent(state: KioskState, spring: SpringAdapter) -> dict:
     """추천 ReAct 에이전트를 실행하고 결과를 반환한다."""
     s = get_settings()
-    llm = ChatGoogleGenerativeAI(
-        model=s.gemini_model,
-        google_api_key=s.gemini_api_key,
-        temperature=0.5,  # 추천은 약간의 다양성 허용
+    llm = ChatOpenAI(
+        model=s.openai_model,
+        api_key=s.openai_api_key,
+        temperature=0.5,
     )
 
     tools = make_recommend_tools(spring, state["session_id"])

@@ -4,7 +4,7 @@
 흐름을 순서대로 처리하는 ReAct 에이전트.
 """
 
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
 from adapter.spring_adapter import SpringAdapter
@@ -35,10 +35,10 @@ _PAYMENT_SYSTEM_PROMPT = """
 async def run_payment_agent(state: KioskState, spring: SpringAdapter) -> dict:
     """결제 흐름 ReAct 에이전트를 실행하고 결과를 반환한다."""
     s = get_settings()
-    llm = ChatGoogleGenerativeAI(
-        model=s.gemini_model,
-        google_api_key=s.gemini_api_key,
-        temperature=0,  # 결제는 일관성이 중요하므로 0
+    llm = ChatOpenAI(
+        model=s.openai_model,
+        api_key=s.openai_api_key,
+        temperature=0,
     )
 
     tools = make_payment_tools(spring, state["session_id"])
