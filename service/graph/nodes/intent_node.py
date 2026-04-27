@@ -7,7 +7,7 @@
 import logging
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 
 from core.config import get_settings
 from service.graph.state import KioskState
@@ -23,12 +23,12 @@ _INTENT_SYSTEM_PROMPT = """
 """.strip()
 
 
-def _build_llm() -> ChatGoogleGenerativeAI:
+def _build_llm() -> ChatOpenAI:
     s = get_settings()
-    return ChatGoogleGenerativeAI(
-        model=s.gemini_model,
-        google_api_key=s.gemini_api_key,
-        temperature=0,  # 의도 분류는 일관성이 중요하므로 0
+    return ChatOpenAI(
+        model=s.openai_model,
+        api_key=s.openai_api_key,
+        temperature=0,
     )
 
 
