@@ -81,6 +81,25 @@ class TopMenuSummary(BaseModel):
     is_sold_out: bool = Field(alias="isSoldOut")
 
 
+class FilterMenuResult(BaseModel):
+    """GET /api/menus/filter 응답 항목 (nutrition 포함)"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    menu_id: int = Field(alias="menuId")
+    name: str
+    price: int
+    category_id: Optional[int] = Field(default=None, alias="categoryId")
+    image_url: Optional[str] = Field(default=None, alias="imageUrl")
+    spicy_level: int = Field(default=0, alias="spicyLevel")
+    temperature_type: str = Field(default="HOT", alias="temperatureType")
+    vegetarian_type: str = Field(default="NONE", alias="vegetarianType")
+    season_recommended: str = Field(default="ALL", alias="seasonRecommended")
+    allergies: list[str] = Field(default_factory=list)
+    is_sold_out: bool = Field(alias="isSoldOut")
+    nutrition: Optional[Nutrition] = None
+
+
 class MenuDetail(BaseModel):
     """GET /api/menus/{menuId} 응답 (상세 + 옵션 + 영양 + 알레르기)"""
 
