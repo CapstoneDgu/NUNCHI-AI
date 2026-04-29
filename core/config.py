@@ -13,8 +13,11 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(min_length=1, alias="OPEN_API_KEY")
     openai_model: str = "gpt-4o-mini"
 
+    # MCP 서버
+    mcp_server_url: str = "http://localhost:8090"
+
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env.local", ".env"),  # 로컬 우선, 배포는 .env
         env_file_encoding="utf-8",
         populate_by_name=True,
         extra="ignore",

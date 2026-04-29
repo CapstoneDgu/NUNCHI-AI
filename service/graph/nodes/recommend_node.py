@@ -4,12 +4,11 @@
 눈치 감지 노드(nunchi_node)에서도 이 노드로 연결된다.
 """
 
+from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
-from adapter.spring_adapter import SpringAdapter
 from core.config import get_settings
-from mcp.server import make_recommend_tools
 from service.graph.state import KioskState
 
 _RECOMMEND_SYSTEM_PROMPT = """
@@ -26,8 +25,8 @@ _RECOMMEND_SYSTEM_PROMPT = """
 Tool 선택 기준:
 - 영양소·알레르기·온도·채식·계절 조건 → tool_filter_menus 우선 사용
 - "잘 팔리는", "인기 메뉴" → tool_get_top_menus 사용
-- "밥류", "음료" 등 카테고리 이름이 포함된 요청 → tool_get_categories 로 categoryId 확인 후 tool_get_menus_by_category 사용
-- 조건 없이 전체 메뉴 → tool_get_all_menus 사용
+- "밥류", "음료" 등 카테고리 이름이 포함된 요청 → tool_get_categories 로 categoryId 확인 후 tool_get_menus 사용
+- 조건 없이 전체 메뉴 → tool_get_menus 사용
 
 사용자 발화 → tool_filter_menus 파라미터 매핑:
 - "칼로리 낮은 거" → max_calorie 적정값 설정
@@ -49,24 +48,23 @@ Tool 선택 기준:
 - 판매량 + 속성 조건이 함께 있을 때: 반드시 두 단계로 처리
   예) "오늘 잘 팔리는 3개 중 단백질 가장 높은 것"
     1. tool_get_top_menus(limit=3) → menuId 목록 획득
-    2. tool_get_menu_detail_recommend(menuId) 를 각각 호출 → nutrition 확인
+    2. tool_get_menu_detail(menuId) 를 각각 호출 → nutrition 확인
     3. protein 값 비교 후 최고값 추천
-  예) "인기 5개 중 나트륨 낮은 것" → 위와 동일 패턴, sodium 비교
 - filter 결과가 너무 많으면 그 중 가장 잘 맞는 1~3개를 골라 추천해라.
 """.strip()
 
 
-async def run_recommend_agent(state: KioskState, spring: SpringAdapter) -> dict:
+async def run_recommend_agent(state: KioskState) -> dict:
     """추천 ReAct 에이전트를 실행하고 결과를 반환한다."""
     s = get_settings()
-    llm = ChatOpenAI(
-        model=s.openai_model,
-        api_key=s.openai_api_key,
-        temperature=0.5,
-    )
 
-    tools = make_recommend_tools(spring, state["session_id"])
-    agent = create_react_agent(llm, tools, prompt=_RECOMMEND_SYSTEM_PROMPT)
+    llm = ChatOpenAI(model=s.openai_model, api_key=s.openai_api_key, temperature=0.5)
 
-    result = await agent.ainvoke({"messages": state["messages"]})
+    async with MultiServerMCPClient(
+        {"kiosk": {"url": f"{s.mcp_server_url}/sse", "transport": "sse"}}
+    ) as client:
+        tools = client.get_tools()
+        agent = create_react_agent(llm, tools, prompt=_RECOMMEND_SYSTEM_PROMPT)
+        result = await agent.ainvoke({"messages": state["messages"]})
+
     return {"messages": result["messages"]}

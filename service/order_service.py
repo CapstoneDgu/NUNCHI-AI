@@ -22,7 +22,7 @@ _GREETING_PROMPT = "안녕하세요! 무엇을 도와드릴까요? 메뉴를 추
 class OrderService:
     def __init__(self, spring: SpringAdapter) -> None:
         self._spring = spring
-        self._graph = build_kiosk_graph(spring)
+        self._graph = build_kiosk_graph()
 
     async def start(
         self,

@@ -14,4 +14,9 @@ eval-type-backport>=0.2.0  # Python 3.9에서 str | None 문법 지원
 # LangGraph / LangChain
 langgraph>=0.2.0
 langchain-core>=0.3.0
+langchain-openai>=0.2.0
 langchain-google-genai>=2.0.0
+
+# MCP
+fastmcp>=2.0.0
+langchain-mcp-adapters>=0.1.0
