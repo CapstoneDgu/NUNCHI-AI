@@ -13,7 +13,7 @@ from langchain_core.messages import HumanMessage
 from adapter.spring_adapter import SpringAdapter
 from domain.order_request import ChatOrderResponse, StartOrderResponse
 from domain.session import SessionMode
-from mcp.tools.session_tools import create_session, save_message
+from kiosk_mcp.tools.session_tools import create_session, save_message
 from service.graph.kiosk_graph import build_kiosk_graph
 
 _GREETING_PROMPT = "안녕하세요! 무엇을 도와드릴까요? 메뉴를 추천해드릴까요, 아니면 직접 골라보시겠어요?"

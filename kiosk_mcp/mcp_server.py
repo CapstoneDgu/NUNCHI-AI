@@ -3,7 +3,7 @@
 독립 프로세스로 실행되며, LangGraph 에이전트와 Claude Desktop 등
 외부 MCP 클라이언트에서 Tool을 직접 호출할 수 있다.
 
-실행: python -m mcp.mcp_server
+실행: python -m kiosk_mcp.mcp_server
 포트: 8090 (MCP_SERVER_PORT 환경변수로 변경 가능)
 """
 
@@ -18,16 +18,47 @@ from fastmcp import FastMCP
 from adapter.spring_adapter import SpringAdapter
 from core.config import get_settings
 from domain.payment import PaymentMethod
-from mcp.tools.cart_tools import add_cart_item, get_cart, remove_cart_item, update_cart_item
-from mcp.tools.menu_tools import filter_menus, get_categories, get_menu_detail, get_menus, get_top_menus
-from mcp.tools.order_tools import confirm_order
-from mcp.tools.payment_tools import request_payment
-from mcp.tools.session_tools import complete_session, save_tool_log
+from kiosk_mcp.tools.cart_tools import add_cart_item, get_cart, remove_cart_item, update_cart_item
+from kiosk_mcp.tools.menu_tools import filter_menus, get_categories, get_menu_detail, get_menus, get_top_menus
+from kiosk_mcp.tools.order_tools import confirm_order
+from kiosk_mcp.tools.payment_tools import request_payment
+from kiosk_mcp.tools.session_tools import complete_session, create_session, save_message, save_tool_log
+from domain.session import SessionMode
 
 _settings = get_settings()
 _spring = SpringAdapter(_settings)
 
-mcp_app = FastMCP("nunchi-kiosk")
+_INSTRUCTIONS = """
+너는 눈치 키오스크 AI 어시스턴트다.
+메뉴 조회, 추천, 장바구니, 주문, 결제 관련 Tool을 제공한다.
+
+반드시 지켜야 할 규칙:
+1. 사용자가 눈치 키오스크를 통해 주문하겠다고 명시적으로 밝힐 때만 tool_create_session을 호출해 session_id를 발급받아라.
+   예) "눈치 키오스크로 주문할게", "키오스크 시작해줘", "주문하고 싶어" 등
+   단순 메뉴 질문, 일반 대화, 다른 음식점 얘기 등에서는 절대 호출하지 마라.
+2. session_id 발급 후, 사용자 메시지는 tool_save_message(session_id=?, role="USER", content=사용자발화)로 저장해라.
+3. 장바구니·주문·결제 Tool 호출 시 반드시 session_id를 포함해라.
+4. 응답하기 전에 tool_save_message(session_id=?, role="ASSISTANT", content=응답내용)으로 저장해라.
+5. 메뉴·가격은 절대 임의로 만들지 말고 Tool로 조회한 결과만 사용해라.
+""".strip()
+
+mcp_app = FastMCP("nunchi-kiosk", instructions=_INSTRUCTIONS)
+
+
+# ─── 세션 시작 / 대화 저장 Tool ──────────────────────────────────────────────
+
+@mcp_app.tool()
+async def tool_create_session(language: str = "ko") -> str:
+    """대화 세션을 시작한다. 반드시 대화 첫 번째로 호출해야 한다. session_id를 반환한다."""
+    result = await create_session(_spring, mode=SessionMode.avatar, language=language)
+    return json.dumps({"session_id": result.session_id}, ensure_ascii=False)
+
+
+@mcp_app.tool()
+async def tool_save_message(session_id: int, role: str, content: str) -> str:
+    """대화 메시지를 저장한다. role은 USER 또는 ASSISTANT 중 하나다."""
+    await save_message(_spring, session_id, role, content)
+    return "저장 완료"
 
 
 # ─── 메뉴 / 카테고리 Tool ────────────────────────────────────────────────────
@@ -212,6 +243,9 @@ async def tool_complete_session(session_id: int) -> str:
 
 
 if __name__ == "__main__":
-    import uvicorn
-    port = int(os.getenv("MCP_SERVER_PORT", "8090"))
-    uvicorn.run(mcp_app.sse_app(), host="0.0.0.0", port=port)
+    transport = os.getenv("MCP_TRANSPORT", "sse")
+    if transport == "stdio":
+        mcp_app.run()  # Claude Desktop 연결용
+    else:
+        port = int(os.getenv("MCP_SERVER_PORT", "8090"))
+        mcp_app.run(transport="sse", host="0.0.0.0", port=port)  # FastAPI 연결용
