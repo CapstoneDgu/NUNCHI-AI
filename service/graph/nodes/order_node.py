@@ -1,15 +1,15 @@
 """주문 에이전트 노드
 
 메뉴 탐색, 장바구니 담기/수정/삭제를 처리하는 ReAct 에이전트.
-make_order_tools()로 생성된 Tool 목록을 LangGraph create_react_agent에 주입한다.
+MultiServerMCPClient로 FastMCP 서버에 연결해 Tool 목록을 가져온다.
 """
 
+from langchain_core.tools import BaseTool
+from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
-from adapter.spring_adapter import SpringAdapter
 from core.config import get_settings
-from mcp.server import make_order_tools
 from service.graph.state import KioskState
 
 _ORDER_SYSTEM_PROMPT = """
@@ -24,17 +24,39 @@ _ORDER_SYSTEM_PROMPT = """
 """.strip()
 
 
-async def run_order_agent(state: KioskState, spring: SpringAdapter) -> dict:
+def _bind_session_id(tools: list[BaseTool], session_id: int) -> list[BaseTool]:
+    """session_id 파라미터를 가진 tool에 state의 session_id를 강제 주입한다.
+    LLM이 전달한 값을 무시하고 항상 state 값으로 덮어써서 세션 혼동을 방지한다."""
+    result = []
+    for tool in tools:
+        if "session_id" not in (tool.args or {}):
+            result.append(tool)
+            continue
+
+        original_coroutine = tool.coroutine
+
+        async def _wrapped(*args, _orig=original_coroutine, _sid=session_id, **kwargs):
+            kwargs["session_id"] = _sid
+            return await _orig(*args, **kwargs)
+
+        tool.coroutine = _wrapped
+        result.append(tool)
+    return result
+
+
+async def run_order_agent(state: KioskState) -> dict:
     """주문/장바구니 ReAct 에이전트를 실행하고 결과를 반환한다."""
     s = get_settings()
-    llm = ChatOpenAI(
-        model=s.openai_model,
-        api_key=s.openai_api_key,
-        temperature=0.3,
-    )
+    session_id = state["session_id"]
 
-    tools = make_order_tools(spring, state["session_id"])
-    agent = create_react_agent(llm, tools, prompt=_ORDER_SYSTEM_PROMPT)
+    llm = ChatOpenAI(model=s.openai_model, api_key=s.openai_api_key, temperature=0.3)
 
-    result = await agent.ainvoke({"messages": state["messages"]})
+    async with MultiServerMCPClient(
+        {"kiosk": {"url": f"{s.mcp_server_url}/sse", "transport": "sse"}}
+    ) as client:
+        raw_tools = await client.get_tools()
+        tools = _bind_session_id(raw_tools, session_id)
+        agent = create_react_agent(llm, tools, prompt=_ORDER_SYSTEM_PROMPT)
+        result = await agent.ainvoke({"messages": state["messages"]})
+
     return {"messages": result["messages"]}

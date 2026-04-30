@@ -1,179 +1,216 @@
-# Spring DB 구조 변경 반영 계획
+# FastMCP 서버 전환 계획
+
+**목표**: 현재 `@tool` 방식(FastAPI 내부에서만 동작)을 FastMCP 독립 프로세스로 전환해
+Claude Desktop 등 외부 AI 클라이언트에서도 Tool 직접 호출 가능하게 만든다.
 
 ---
 
-## 변경 범위 요약
+## 변경 요약
 
-Spring DB 구조 및 API 스펙이 업데이트됨에 따라 FastAPI 쪽 도메인 모델, MCP Tool, AI 추천 로직을 맞춰 수정한다.
-
----
-
-## 1. `domain/menu.py` — 대폭 확장 (가장 큰 변경)
-
-### 1-1. `Nutrition` 서브모델 신규 추가
-
-Spring `MenuDetailResponse.nutrition` 응답 구조에 맞게 Pydantic 모델 추가.
-
-```python
-class Nutrition(BaseModel):
-    calorie: int
-    protein: float
-    carbohydrate: float
-    fat: float
-    sodium: int
-    sugar: float
-    trans_fat: float = Field(alias="transFat")
-    cholesterol: int
-    dietary_fiber: float = Field(alias="dietaryFiber")
-```
-
-### 1-2. `OptionGroup`에 필드 추가
-
-Spring DB에 `is_required`, `max_select` 컬럼이 있음. 현재 모델에 누락.
-
-```python
-class OptionGroup(BaseModel):
-    group_id: int = Field(alias="groupId")
-    group_name: str = Field(alias="groupName")
-    is_required: bool = Field(alias="isRequired")
-    max_select: int = Field(alias="maxSelect")
-    options: list[Option] = Field(default_factory=list)
-```
-
-### 1-3. `MenuDetail`에 신규 필드 추가
-
-AI 추천 시나리오에서 핵심적으로 사용하는 필드들.
-
-```python
-class MenuDetail(BaseModel):
-    # 기존 필드 유지
-    menu_id: int
-    name: str
-    price: int
-    is_sold_out: bool
-    image_url: Optional[str]
-    option_groups: list[OptionGroup]
-    # 신규 추가
-    nutrition: Optional[Nutrition] = None
-    allergies: list[str] = Field(default_factory=list)   # ["WHEAT", "SOY", ...]
-    spicy_level: int = Field(default=0, alias="spicyLevel")
-    temperature_type: str = Field(default="HOT", alias="temperatureType")   # HOT/COLD/BOTH
-    vegetarian_type: str = Field(default="NONE", alias="vegetarianType")    # NONE/VEGETARIAN/VEGAN
-    season_recommended: str = Field(default="ALL", alias="seasonRecommended")
-    origin_info: Optional[str] = Field(default=None, alias="originInfo")
-```
-
-### 1-4. `MenuSummary`에 AI 필터링용 필드 추가
-
-GET /api/menus 목록 응답에도 spicyLevel, temperatureType 등이 포함될 수 있음.
-Spring 팀과 협의해 목록 응답에 추천 필터 필드를 포함하도록 요청한다.
-추가될 필드:
-
-```python
-class MenuSummary(BaseModel):
-    # 기존 유지
-    menu_id: int
-    name: str
-    price: int
-    is_sold_out: bool
-    # 신규 추가 (Spring 목록 API 응답에 포함 요청)
-    spicy_level: int = Field(default=0, alias="spicyLevel")
-    temperature_type: str = Field(default="HOT", alias="temperatureType")
-    vegetarian_type: str = Field(default="NONE", alias="vegetarianType")
-    season_recommended: str = Field(default="ALL", alias="seasonRecommended")
-    allergies: list[str] = Field(default_factory=list)
-    calorie: Optional[int] = None   # 목록에서 칼로리만 바로 노출
-```
-
-> Spring 팀 요청 필요: GET /api/menus 목록 응답에 spicyLevel, temperatureType, vegetarianType, seasonRecommended, allergies, calorie 포함
+| 구분 | 현재 | 변경 후 |
+|------|------|---------|
+| Tool 방식 | LangChain `@tool` 데코레이터 | FastMCP `@mcp_app.tool()` |
+| 실행 위치 | FastAPI 프로세스 내부 | 포트 8090 독립 프로세스 |
+| session_id 주입 | 클로저(팩토리 함수)로 주입 | Tool 파라미터로 직접 전달 |
+| nodes 연결 방식 | `make_order_tools(spring, session_id)` | `MultiServerMCPClient` SSE 연결 |
+| Spring 어댑터 위치 | 각 노드에서 주입 | MCP 서버 내부에서 전역 생성 |
 
 ---
 
-## 2. `domain/order.py` — OrderStatus 수정
+## 변경 파일 목록
 
-DB 스펙: `PENDING / COMPLETED / CANCELLED`
-현재 코드: `CONFIRMED / COMPLETED / CANCELLED` → `CONFIRMED`가 잘못됨.
+### 신규 생성
+1. `mcp/mcp_server.py` — FastMCP 서버 본체 (port 8090)
+2. `.env.local` — 로컬 개발용 환경 변수 템플릿
+3. `docker-compose.yml` — fastapi + mcp 동시 실행 구성
 
+### 수정
+4. `requirements.txt` — `mcp[cli]`, `langchain-mcp-adapters` 의존성 추가
+5. `core/config.py` — `mcp_server_url` 설정 추가
+6. `service/graph/nodes/order_node.py` — `make_order_tools` → `MultiServerMCPClient` 교체
+7. `service/graph/nodes/recommend_node.py` — `make_recommend_tools` → `MultiServerMCPClient` 교체
+8. `service/graph/nodes/payment_node.py` — `make_payment_tools` → `MultiServerMCPClient` 교체
+
+### 유지 (변경 없음)
+- `mcp/tools/*.py` — 비즈니스 로직 그대로 재사용
+- `mcp/server.py` — 전환 완료 후 삭제 예정, 지금은 유지
+
+---
+
+## 1단계: 의존성 및 설정 추가
+
+### `requirements.txt` 추가
+```
+mcp[cli]>=1.0.0
+langchain-mcp-adapters>=0.1.0
+```
+
+### `core/config.py` 수정
+`Settings` 클래스에 아래 필드 추가:
 ```python
-class OrderStatus(str, Enum):
-    pending   = "PENDING"     # CONFIRMED → PENDING 으로 교체
-    completed = "COMPLETED"
-    cancelled = "CANCELLED"
+mcp_server_url: str = "http://localhost:8090"
 ```
 
 ---
 
-## 3. `domain/payment.py` — PaymentStatus 수정
+## 2단계: `mcp/mcp_server.py` 신규 생성
 
-DB 스펙: `PENDING / SUCCESS / FAILED`
-현재 코드: `fail = "FAIL"` → `"FAILED"` 로 변경.
+FastMCP 인스턴스 하나에 전체 Tool을 등록한다.
+`mcp/tools/*.py`의 함수를 그대로 호출하고, `spring: SpringAdapter`는 서버 시작 시 전역으로 생성한다.
+`session_id`는 Tool 파라미터로 직접 받는다.
 
 ```python
-class PaymentStatus(str, Enum):
-    pending = "PENDING"
-    success = "SUCCESS"
-    failed  = "FAILED"   # FAIL → FAILED
+from contextlib import asynccontextmanager
+from mcp.server.fastmcp import FastMCP
+from adapter.spring_adapter import SpringAdapter
+from core.config import get_settings
+from mcp.tools.cart_tools import add_cart_item, get_cart, remove_cart_item, update_cart_item
+from mcp.tools.menu_tools import filter_menus, get_categories, get_menu_detail, get_menus, get_top_menus
+from mcp.tools.order_tools import confirm_order
+from mcp.tools.payment_tools import request_payment
+from mcp.tools.session_tools import complete_session, save_tool_log
+
+mcp_app = FastMCP("nunchi-kiosk")
+_spring: SpringAdapter | None = None
+
+# --- 메뉴/카테고리 Tool ---
+
+@mcp_app.tool()
+async def tool_get_categories() -> str:
+    """카테고리 목록을 조회한다."""
+    ...
+
+@mcp_app.tool()
+async def tool_get_menus(category_id: int | None = None) -> str:
+    """메뉴 목록 조회. category_id 지정 시 해당 카테고리만 반환."""
+    ...
+
+@mcp_app.tool()
+async def tool_get_top_menus(limit: int = 5) -> str:
+    """오늘 판매량 기준 인기 메뉴 목록."""
+    ...
+
+@mcp_app.tool()
+async def tool_get_menu_detail(menu_id: int) -> str:
+    """메뉴 상세 + 옵션. 장바구니 담기 전 반드시 호출."""
+    ...
+
+@mcp_app.tool()
+async def tool_filter_menus(...) -> str:
+    """조건(칼로리/알레르기/채식/온도/계절/가격) 기반 메뉴 필터링."""
+    ...
+
+# --- 장바구니 Tool ---
+
+@mcp_app.tool()
+async def tool_add_cart_item(session_id: int, menu_id: int, quantity: int, option_ids: list[int]) -> str:
+    """장바구니에 메뉴 담기."""
+    ...
+
+@mcp_app.tool()
+async def tool_get_cart(session_id: int) -> str:
+    """현재 장바구니 전체 조회."""
+    ...
+
+@mcp_app.tool()
+async def tool_update_cart_item(session_id: int, item_id: str, quantity: int) -> str:
+    """장바구니 수량 수정."""
+    ...
+
+@mcp_app.tool()
+async def tool_remove_cart_item(session_id: int, item_id: str) -> str:
+    """장바구니 아이템 삭제."""
+    ...
+
+# --- 주문/결제 Tool ---
+
+@mcp_app.tool()
+async def tool_confirm_order(session_id: int) -> str:
+    """장바구니를 주문으로 확정. 결제 전 반드시 호출."""
+    ...
+
+@mcp_app.tool()
+async def tool_request_payment(session_id: int, order_id: int, method: str) -> str:
+    """결제 요청. method: IC_CARD | VEIN_AUTH"""
+    ...
+
+@mcp_app.tool()
+async def tool_complete_session(session_id: int) -> str:
+    """주문 세션 종료. 결제 완료 후 호출."""
+    ...
+```
+
+**진입점 (`__main__`)**:
+```python
+if __name__ == "__main__":
+    import asyncio
+    s = get_settings()
+    _spring = SpringAdapter(s.spring_base_url)
+    mcp_app.run(transport="sse", port=8090)
 ```
 
 ---
 
-## 4. `domain/session.py` — SessionStatus 수정
+## 3단계: nodes 수정 — `MultiServerMCPClient` 교체
 
-DB 스펙: `ACTIVE / COMPLETED / EXPIRED`
-현재 코드: EXPIRED 누락.
+세 노드 모두 동일한 패턴으로 변경.
+`spring: SpringAdapter` 파라미터 제거, session_id를 시스템 프롬프트에 포함시켜 LLM이 Tool 호출 시 자동으로 넘기게 한다.
 
+### `order_node.py` 변경 패턴
 ```python
-class SessionStatus(str, Enum):
-    active    = "ACTIVE"
-    completed = "COMPLETED"
-    expired   = "EXPIRED"   # 신규 추가
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from core.config import get_settings
+
+async def run_order_agent(state: KioskState) -> dict:
+    s = get_settings()
+    session_id = state["session_id"]
+    prompt = _ORDER_SYSTEM_PROMPT + f"\n\n현재 세션 ID: {session_id} — 장바구니/주문 Tool 호출 시 반드시 session_id={session_id} 를 전달해라."
+
+    async with MultiServerMCPClient({"kiosk": {"url": s.mcp_server_url + "/sse", "transport": "sse"}}) as client:
+        tools = client.get_tools()
+        llm = ChatOpenAI(model=s.openai_model, api_key=s.openai_api_key, temperature=0.3)
+        agent = create_react_agent(llm, tools, prompt=prompt)
+        result = await agent.ainvoke({"messages": state["messages"]})
+
+    return {"messages": result["messages"]}
+```
+
+- `recommend_node.py` — 동일 패턴, `make_recommend_tools` 제거
+- `payment_node.py` — 동일 패턴, `make_payment_tools` 제거
+
+---
+
+## 4단계: `.env.local` 신규 생성
+
+로컬 개발 시 사용할 환경변수 템플릿 (`.gitignore`에 포함):
+```
+OPEN_API_KEY=sk-...
+SPRING_BASE_URL=http://localhost:8080
+MCP_SERVER_URL=http://localhost:8090
 ```
 
 ---
 
-## 5. `domain/conversation.py` — 필드명 확인
+## 5단계: `docker-compose.yml` 신규 생성
 
-현재 코드는 `text` 필드 사용. DB 컬럼명은 `content`.
-Spring API 응답 JSON 필드명이 `content`로 변경됐는지 Spring 팀에 확인 후 반영.
+같은 AI 이미지를 두 컨테이너로 분리 실행 (FastAPI / MCP 서버).
 
-변경 예시 (Spring 확인 후):
-```python
-class ConversationMessage(BaseModel):
-    message_id: int = Field(alias="messageId")
-    session_id: int = Field(alias="sessionId")
-    role: str
-    content: str   # text → content 로 변경
-    created_at: datetime = Field(alias="createdAt")
-```
+```yaml
+version: "3.9"
+services:
+  fastapi:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    env_file: .env
 
----
-
-## 6. `service/graph/nodes/recommend_node.py` — 시스템 프롬프트 확장
-
-새 필드(영양정보, 알레르기, 매운맛, 채식, 계절, 온도)를 활용하는 추천 지침 추가.
-
-```python
-_RECOMMEND_SYSTEM_PROMPT = """
-너는 키오스크 메뉴 추천 AI 어시스턴트다.
-실제 메뉴 데이터를 기반으로 사용자에게 메뉴를 추천해줘.
-
-규칙:
-- 반드시 Tool로 조회한 실제 메뉴 데이터를 기반으로 추천해라. 임의로 메뉴를 만들지 마라.
-- 추천할 때는 메뉴명과 가격을 함께 알려줘라.
-- 추천 이유를 간단히 덧붙여줘라. (예: "오늘 가장 많이 팔린 메뉴예요")
-- 추천 후 "장바구니에 담아드릴까요?" 로 자연스럽게 주문으로 유도해라.
-- 응답은 한국어로 친절하고 간결하게 해라.
-
-사용자 발화 → 활용 필드 매핑:
-- "칼로리 낮은 거" → nutrition.calorie 낮은 순 필터
-- "매운 거 / 안 매운 거" → spicyLevel 높음/0 필터
-- "알레르기 있어" → allergies 제외 필터
-- "채식 / 비건" → vegetarianType = VEGETARIAN / VEGAN 필터
-- "따뜻한 거 / 시원한 거" → temperatureType = HOT / COLD 필터
-- "여름 메뉴 / 봄 메뉴" → seasonRecommended 필터
-- "단백질 많은 거" → nutrition.protein 높은 순 필터
-- "나트륨 낮은 거" → nutrition.sodium 낮은 순 필터
-""".strip()
+  mcp:
+    build: .
+    command: python -m mcp.mcp_server
+    ports:
+      - "8090:8090"
+    env_file: .env
 ```
 
 ---
@@ -182,52 +219,37 @@ _RECOMMEND_SYSTEM_PROMPT = """
 
 | 순서 | 파일 | 작업 내용 |
 |------|------|----------|
-| 1 | `domain/menu.py` | Nutrition 모델 추가, OptionGroup/MenuDetail/MenuSummary 확장 |
-| 2 | `domain/order.py` | OrderStatus.confirmed → pending 수정 |
-| 3 | `domain/payment.py` | PaymentStatus.fail → failed 수정 |
-| 4 | `domain/session.py` | SessionStatus.expired 추가 |
-| 5 | `domain/conversation.py` | Spring 확인 후 content 필드 반영 |
-| 6 | `service/graph/nodes/recommend_node.py` | 시스템 프롬프트 확장 |
+| 1 | `requirements.txt` | `mcp[cli]`, `langchain-mcp-adapters` 추가 |
+| 2 | `core/config.py` | `mcp_server_url` 필드 추가 |
+| 3 | `mcp/mcp_server.py` | FastMCP 서버 전체 구현 |
+| 4 | `service/graph/nodes/order_node.py` | `MultiServerMCPClient` 교체, spring 파라미터 제거 |
+| 5 | `service/graph/nodes/recommend_node.py` | 동일 |
+| 6 | `service/graph/nodes/payment_node.py` | 동일 |
+| 7 | `.env.local` | 로컬 환경변수 템플릿 생성 |
+| 8 | `docker-compose.yml` | 서비스 구성 파일 생성 |
+| 9 | `mcp/server.py` | 레거시 파일 삭제 |
 
 ---
 
-## Spring 팀 확인 필요 사항
+## 로컬 실행 방법 (도커 없이)
 
-- [ ] GET /api/menus 목록 응답에 spicyLevel, temperatureType, vegetarianType, seasonRecommended, allergies, calorie 포함 요청
-- [ ] POST /api/sessions/{sessionId}/messages 응답에서 `text` 필드명이 `content`로 변경됐는지 확인
+터미널 3개를 동시에 실행:
+```
+# 터미널 1 — Spring
+cd spring_project && ./gradlew bootRun
+
+# 터미널 2 — MCP 서버
+cd capstone_ai && python -m mcp.mcp_server
+
+# 터미널 3 — FastAPI
+cd capstone_ai && uvicorn app.main:app --reload
+```
 
 ---
 
-## 나중에 할 것 (미구현 사항)
+## 변경하지 않는 것
 
-### 1. 결제 성공/실패 처리 Tool 추가
-
-Spring API는 있는데 FastAPI에 연결이 안 된 상태.
-
-| 작업 | 파일 | 내용 |
-|------|------|------|
-| 함수 추가 | `mcp/tools/payment_tools.py` | `payment_success(spring, payment_id)` — PATCH /api/payments/{id}/success |
-| 함수 추가 | `mcp/tools/payment_tools.py` | `payment_fail(spring, payment_id)` — PATCH /api/payments/{id}/fail |
-| Tool 등록 | `mcp/server.py` | `make_payment_tools`에 `tool_payment_success`, `tool_payment_fail` 추가 |
-| 프롬프트 수정 | `service/graph/nodes/payment_node.py` | 결제 순서에 success/fail 처리 단계 추가 |
-
-현재 결제 흐름: `confirm_order` → `request_payment` → `complete_session`
-수정 후 흐름: `confirm_order` → `request_payment` → 하드웨어 대기 → `payment_success/fail` → `complete_session`
-
-### 2. 주문 취소 Tool 추가
-
-"주문 취소해줘" 발화 처리 불가 상태.
-
-| 작업 | 파일 | 내용 |
-|------|------|------|
-| 함수 추가 | `mcp/tools/order_tools.py` | `cancel_order(spring, order_id)` — PATCH /api/orders/{orderId}/cancel |
-| Tool 등록 | `mcp/server.py` | `make_order_tools`에 `tool_cancel_order` 추가 |
-
-### 3. MenuSummary에 단백질/나트륨/지방 필드 추가
-
-Spring GET /api/menus 응답에 protein, sodium, fat 추가 요청 후 반영.
-
-| 작업 | 파일 | 내용 |
-|------|------|------|
-| Spring 요청 | - | GET /api/menus 응답에 protein, sodium, fat 포함 요청 |
-| 모델 수정 | `domain/menu.py` | MenuSummary에 protein, sodium, fat 필드 추가 |
+- `mcp/tools/*.py` — 비즈니스 로직 그대로 재사용, 함수 시그니처 유지
+- Spring 코드 — 수정 없음 (MCP 서버도 동일한 Spring HTTP API 호출)
+- 도메인 모델 (`domain/*.py`) — 변경 없음
+- `adapter/spring_adapter.py` — 변경 없음

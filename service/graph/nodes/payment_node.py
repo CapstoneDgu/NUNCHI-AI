@@ -4,12 +4,11 @@
 흐름을 순서대로 처리하는 ReAct 에이전트.
 """
 
+from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
-from adapter.spring_adapter import SpringAdapter
 from core.config import get_settings
-from mcp.server import make_payment_tools
 from service.graph.state import KioskState
 
 _PAYMENT_SYSTEM_PROMPT = """
@@ -27,22 +26,25 @@ _PAYMENT_SYSTEM_PROMPT = """
 
 규칙:
 - 결제 수단을 사용자에게 먼저 확인하고 진행해라.
+- 모든 Tool 호출 시 session_id 파라미터를 반드시 포함해라.
 - 결제 정보(카드번호 등 민감 정보)는 절대 로그나 응답에 포함하지 마라.
 - 응답은 한국어로 친절하고 간결하게 해라.
 """.strip()
 
 
-async def run_payment_agent(state: KioskState, spring: SpringAdapter) -> dict:
+async def run_payment_agent(state: KioskState) -> dict:
     """결제 흐름 ReAct 에이전트를 실행하고 결과를 반환한다."""
     s = get_settings()
-    llm = ChatOpenAI(
-        model=s.openai_model,
-        api_key=s.openai_api_key,
-        temperature=0,
-    )
+    session_id = state["session_id"]
+    prompt = _PAYMENT_SYSTEM_PROMPT + f"\n\n현재 세션 ID: {session_id}"
 
-    tools = make_payment_tools(spring, state["session_id"])
-    agent = create_react_agent(llm, tools, prompt=_PAYMENT_SYSTEM_PROMPT)
+    llm = ChatOpenAI(model=s.openai_model, api_key=s.openai_api_key, temperature=0)
 
-    result = await agent.ainvoke({"messages": state["messages"]})
+    async with MultiServerMCPClient(
+        {"kiosk": {"url": f"{s.mcp_server_url}/sse", "transport": "sse"}}
+    ) as client:
+        tools = client.get_tools()
+        agent = create_react_agent(llm, tools, prompt=prompt)
+        result = await agent.ainvoke({"messages": state["messages"]})
+
     return {"messages": result["messages"]}

@@ -12,6 +12,7 @@ env/
 
 # 환경변수
 .env
+.env.local
 
 # 로컬 자료
 .claude/
