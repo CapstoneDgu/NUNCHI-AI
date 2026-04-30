@@ -54,8 +54,17 @@ async def filter_menus(
     category_id: Optional[int] = None,
     exclude_allergies: Optional[str] = None,
     limit: Optional[int] = None,
+    restaurant_name: Optional[str] = None,
+    floor: Optional[int] = None,
 ) -> list[FilterMenuResult]:
-    """메뉴 필터 조회 — GET /api/menus/filter"""
+    """메뉴 필터 조회 — GET /api/menus/filter
+
+    - restaurant_name: 식당명 필터. 지정 시 해당 식당 메뉴 + 공용 메뉴(floor/restaurantName=null) 포함.
+      예) restaurant_name="한식당" → 한식당 메뉴 + 음료·추가메뉴 포함
+    - floor: 층 필터. 지정 시 해당 층 메뉴 + 공용 메뉴(floor/restaurantName=null) 포함.
+      예) floor=2 → 2층 식당 메뉴 + 음료·추가메뉴 포함
+    - 공용 메뉴(음료, 추가메뉴)는 floor=null, restaurantName=null 로 내려옴.
+    """
     params: dict = {}
     if max_calorie is not None:
         params["maxCalorie"] = max_calorie
@@ -85,6 +94,10 @@ async def filter_menus(
         params["excludeAllergies"] = exclude_allergies
     if limit is not None:
         params["limit"] = limit
+    if restaurant_name is not None:
+        params["restaurantName"] = restaurant_name
+    if floor is not None:
+        params["floor"] = floor
 
     data = await spring.get("/api/menus/filter", params=params if params else None)
     try:
