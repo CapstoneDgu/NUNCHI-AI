@@ -98,6 +98,8 @@ class FilterMenuResult(BaseModel):
     allergies: list[str] = Field(default_factory=list)
     is_sold_out: bool = Field(alias="isSoldOut")
     nutrition: Optional[Nutrition] = None
+    floor: Optional[int] = None
+    restaurant_name: Optional[str] = Field(default=None, alias="restaurantName")
 
 
 class MenuDetail(BaseModel):

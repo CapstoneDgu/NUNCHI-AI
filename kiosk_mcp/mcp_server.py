@@ -118,6 +118,8 @@ async def tool_filter_menus(
     category_id: Optional[int] = None,
     exclude_allergies: Optional[str] = None,
     limit: Optional[int] = None,
+    restaurant_name: Optional[str] = None,
+    floor: Optional[int] = None,
 ) -> str:
     """조건에 맞는 메뉴를 필터링해 반환한다. 파라미터는 모두 Optional.
 
@@ -133,6 +135,8 @@ async def tool_filter_menus(
     - exclude_allergies: 제외할 알레르기 콤마 구분 영문 enum
       (MILK, EGG, WHEAT, SOY, PEANUT, WALNUT, PINE, SHRIMP, CRAB, SQUID, CLAM, BEEF, PORK, CHICKEN, PEACH, TOMATO, BUCKWHEAT)
     - limit: 반환할 최대 메뉴 수 (추천은 보통 3~5 권장)
+    - restaurant_name: 식당명 필터. 지정 시 해당 식당 + 공용 메뉴(null) 포함
+    - floor: 층 필터. 지정 시 해당 층 + 공용 메뉴(null) 포함
     """
     kwargs = {k: v for k, v in {
         "max_calorie": max_calorie, "min_calorie": min_calorie,
@@ -142,6 +146,7 @@ async def tool_filter_menus(
         "temperature_type": temperature_type, "vegetarian_type": vegetarian_type,
         "season": season, "category_id": category_id,
         "exclude_allergies": exclude_allergies, "limit": limit,
+        "restaurant_name": restaurant_name, "floor": floor,
     }.items() if v is not None}
     return json.dumps(
         [m.model_dump() for m in await filter_menus(_spring, **kwargs)],

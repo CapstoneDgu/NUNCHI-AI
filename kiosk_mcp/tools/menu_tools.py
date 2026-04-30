@@ -54,6 +54,8 @@ async def filter_menus(
     category_id: Optional[int] = None,
     exclude_allergies: Optional[str] = None,
     limit: Optional[int] = None,
+    restaurant_name: Optional[str] = None,
+    floor: Optional[int] = None,
 ) -> list[FilterMenuResult]:
     """메뉴 필터 조회 — GET /api/menus/filter"""
     params: dict = {}
@@ -85,6 +87,10 @@ async def filter_menus(
         params["excludeAllergies"] = exclude_allergies
     if limit is not None:
         params["limit"] = limit
+    if restaurant_name is not None:
+        params["restaurantName"] = restaurant_name
+    if floor is not None:
+        params["floor"] = floor
 
     data = await spring.get("/api/menus/filter", params=params if params else None)
     try:
