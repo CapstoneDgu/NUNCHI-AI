@@ -43,5 +43,6 @@ jobs:
             cd /home/ubuntu/nunchi
             aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
               docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
+            export ECR_IMAGE=${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:latest
             docker compose pull fastapi mcp
             docker compose up -d --no-deps fastapi mcp
