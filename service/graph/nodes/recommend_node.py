@@ -25,7 +25,7 @@ _RECOMMEND_SYSTEM_PROMPT = """
 Tool 선택 기준:
 - 영양소·알레르기·온도·채식·계절 조건 → tool_filter_menus 우선 사용
 - "잘 팔리는", "인기 메뉴" → tool_get_top_menus 사용
-- "밥류", "음료" 등 카테고리 이름이 포함된 요청 → tool_get_categories 로 categoryId 확인 후 tool_get_menus 사용
+- "밥류", "음료" 등 카테고리 이름이 포함된 요청 → tool_get_categories 로 category_id 확인 후 tool_get_menus 사용
 - 조건 없이 전체 메뉴 → tool_get_menus 사용
 
 사용자 발화 → tool_filter_menus 파라미터 매핑:
@@ -47,8 +47,8 @@ Tool 선택 기준:
   예) "저칼로리 비건 메뉴" → tool_filter_menus(max_calorie=500, vegetarian_type="VEGAN")
 - 판매량 + 속성 조건이 함께 있을 때: 반드시 두 단계로 처리
   예) "오늘 잘 팔리는 3개 중 단백질 가장 높은 것"
-    1. tool_get_top_menus(limit=3) → menuId 목록 획득
-    2. tool_get_menu_detail(menuId) 를 각각 호출 → nutrition 확인
+    1. tool_get_top_menus(limit=3) → menu_id 목록 획득
+    2. tool_get_menu_detail(menu_id) 를 각각 호출 → nutrition 확인
     3. protein 값 비교 후 최고값 추천
 - filter 결과가 너무 많으면 그 중 가장 잘 맞는 1~3개를 골라 추천해라.
 """.strip()
@@ -63,7 +63,7 @@ async def run_recommend_agent(state: KioskState) -> dict:
     async with MultiServerMCPClient(
         {"kiosk": {"url": f"{s.mcp_server_url}/sse", "transport": "sse"}}
     ) as client:
-        tools = client.get_tools()
+        tools = await client.get_tools()
         agent = create_react_agent(llm, tools, prompt=_RECOMMEND_SYSTEM_PROMPT)
         result = await agent.ainvoke({"messages": state["messages"]})
 

@@ -57,7 +57,10 @@ async def tool_create_session(language: str = "ko") -> str:
 @mcp_app.tool()
 async def tool_save_message(session_id: int, role: str, content: str) -> str:
     """대화 메시지를 저장한다. role은 USER 또는 ASSISTANT 중 하나다."""
-    await save_message(_spring, session_id, role, content)
+    normalized_role = role.upper()
+    if normalized_role not in {"USER", "ASSISTANT"}:
+        return f"지원하지 않는 role입니다: {role}. USER 또는 ASSISTANT 중 하나를 선택해주세요."
+    await save_message(_spring, session_id, normalized_role, content)
     return "저장 완료"
 
 
@@ -247,5 +250,6 @@ if __name__ == "__main__":
     if transport == "stdio":
         mcp_app.run()  # Claude Desktop 연결용
     else:
+        host = os.getenv("MCP_SERVER_HOST", "127.0.0.1")
         port = int(os.getenv("MCP_SERVER_PORT", "8090"))
-        mcp_app.run(transport="sse", host="0.0.0.0", port=port)  # FastAPI 연결용
+        mcp_app.run(transport="sse", host=host, port=port)  # FastAPI 연결용
