@@ -27,3 +27,21 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+class McpSettings(BaseSettings):
+    """MCP 서버 전용 설정 — OpenAI 키 불필요."""
+    spring_base_url: str = "http://localhost:8080"
+    spring_timeout: int = Field(default=5, ge=1)
+
+    model_config = SettingsConfigDict(
+        env_file=(".env", ".env.local"),
+        env_file_encoding="utf-8",
+        populate_by_name=True,
+        extra="ignore",
+    )
+
+
+@lru_cache
+def get_mcp_settings() -> McpSettings:
+    return McpSettings()
