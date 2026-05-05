@@ -4,13 +4,24 @@
       "Bash(pip3 install:*)",
       "Bash(python3:*)",
       "Bash(git add:*)",
+      "Bash(git add *)",
       "Bash(git commit -m ':*)",
-      "WebFetch(domain:github.com)",
-      "Bash(git push:*)",
-      "Bash(gh pr:*)",
       "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git push:*)",
+      "Bash(git stash *)",
+      "Bash(git switch *)",
+      "Bash(git pull *)",
+      "Bash(git log *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git fetch *)",
+      "Bash(git branch *)",
+      "Bash(gh pr:*)",
+      "Bash(gh pr *)",
       "Bash(gh api *)",
-      "Bash(python *)"
+      "Bash(/opt/homebrew/bin/gh *)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }
