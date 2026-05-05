@@ -59,12 +59,12 @@ _settings = get_mcp_settings()
 
 ```json
 "nunchi-kiosk": {
-  "command": "/Users/hyodongg/Desktop/workspace/capstone_ai/venv/bin/python",
+  "command": "/path/to/project/venv/bin/python",
   "args": ["-m", "kiosk_mcp.mcp_server"],
-  "cwd": "/Users/hyodongg/Desktop/workspace/capstone_ai",
+  "cwd": "/path/to/project",
   "env": {
     "MCP_TRANSPORT": "stdio",
-    "PYTHONPATH": "/Users/hyodongg/Desktop/workspace/capstone_ai",
+    "PYTHONPATH": "/path/to/project",
     "SPRING_BASE_URL": "http://localhost:8080"
   }
 }

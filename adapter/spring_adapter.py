@@ -7,14 +7,14 @@ from typing import Optional
 import httpx
 
 from adapter.ports import SpringPort
-from core.config import Settings
+from core.config import _SpringBaseSettings
 from core.exceptions import SpringApiError, SpringApiTimeoutError
 
 
 class SpringAdapter(SpringPort):
     """Spring 백엔드 HTTP 연동"""
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: _SpringBaseSettings) -> None:
         self._client = httpx.AsyncClient(
             base_url=settings.spring_base_url,
             timeout=settings.spring_timeout,
