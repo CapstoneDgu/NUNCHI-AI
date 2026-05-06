@@ -254,7 +254,7 @@ async def tool_request_payment(session_id: int, order_id: int, method: str) -> s
     except ValueError:
         return f"지원하지 않는 결제 수단입니다: {method}. IC_CARD 또는 VEIN_AUTH 중 하나를 선택해주세요."
     result = json.dumps(
-        (await request_payment(_spring, order_id, payment_method)).model_dump(),
+        (await request_payment(_spring, order_id, payment_method)).model_dump(mode="json"),
         ensure_ascii=False,
     )
     await save_tool_log(
