@@ -43,6 +43,7 @@ class OrderService:
         session_id: int,
         text: str,
         nunchi_signal: Optional[str] = None,
+        mode: str = "NORMAL",
     ) -> ChatOrderResponse:
         """사용자 발화를 받아 그래프를 실행하고 AI 응답을 반환한다.
 
@@ -58,6 +59,8 @@ class OrderService:
         initial_state = {
             "messages":      [HumanMessage(content=text)],
             "session_id":    session_id,
+            "mode":          mode.upper(),
+            "current_step":  "BROWSE",
             "nunchi_signal": nunchi_signal,
         }
 

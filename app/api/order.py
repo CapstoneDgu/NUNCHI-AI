@@ -36,4 +36,5 @@ async def chat_order(
         session_id=body.session_id,
         text=body.text,
         nunchi_signal=body.nunchi_signal,
+        mode=body.mode,
     )

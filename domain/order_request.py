@@ -26,6 +26,7 @@ class ChatOrderRequest(BaseModel):
     session_id: int
     text: str
     nunchi_signal: Optional[str] = None  # React에서 전달하는 눈치 신호 (선택)
+    mode: str = "NORMAL"                 # "AVATAR" 또는 "NORMAL"
 
 
 class ChatOrderResponse(BaseModel):
