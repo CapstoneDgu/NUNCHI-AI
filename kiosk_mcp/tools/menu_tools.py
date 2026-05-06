@@ -114,3 +114,12 @@ async def get_menu_detail(spring: SpringAdapter, menu_id: int) -> MenuDetail:
     except ValidationError as exc:
         logging.error(f"[메뉴 상세 파싱 오류] data={data} | {exc}")
         raise SpringApiError("메뉴 상세 응답 스키마 불일치", status_code=502) from exc
+
+
+async def search_menus(spring: SpringAdapter, name: str) -> list[MenuSummary]:
+    """메뉴명 키워드 검색 — GET /api/menus/search?name={name}"""
+    data = await spring.get("/api/menus/search", params={"name": name})
+    try:
+        return [MenuSummary.model_validate(item) for item in data]
+    except ValidationError as exc:
+        raise SpringApiError("메뉴 검색 응답 스키마 불일치", status_code=502) from exc

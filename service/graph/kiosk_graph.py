@@ -12,6 +12,7 @@ from service.graph.nodes.nunchi_node import detect_nunchi
 from service.graph.nodes.order_node import run_order_agent
 from service.graph.nodes.payment_node import run_payment_agent
 from service.graph.nodes.recommend_node import run_recommend_agent
+from service.graph.nodes.step_node import transition_step
 from service.graph.state import KioskState
 
 
@@ -25,6 +26,7 @@ def build_kiosk_graph():
     graph.add_node("payment_agent",      run_payment_agent)
     graph.add_node("recommend_agent",    run_recommend_agent)
     graph.add_node("nunchi_detector",    detect_nunchi)
+    graph.add_node("step_transition",    transition_step)
 
     # 시작점
     graph.set_entry_point("intent_classifier")
@@ -43,9 +45,10 @@ def build_kiosk_graph():
 
     # 고정 엣지
     graph.add_edge("nunchi_detector",  "recommend_agent")
-    graph.add_edge("order_agent",      END)
+    graph.add_edge("order_agent",      "step_transition")
+    graph.add_edge("recommend_agent",  "step_transition")
+    graph.add_edge("step_transition",  END)
     graph.add_edge("payment_agent",    END)
-    graph.add_edge("recommend_agent",  END)
 
     # 세션별 대화 상태 자동 저장 (thread_id = session_id)
     checkpointer = MemorySaver()
