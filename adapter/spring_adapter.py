@@ -26,6 +26,8 @@ class SpringAdapter(SpringPort):
 
     def _parse(self, response: httpx.Response) -> dict:
         """Spring 공통 응답 파싱"""
+        if response.status_code == 204:
+            return {}
         try:
             body = response.json()
         except json.JSONDecodeError as err:

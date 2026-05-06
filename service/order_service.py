@@ -60,7 +60,6 @@ class OrderService:
             "messages":      [HumanMessage(content=text)],
             "session_id":    session_id,
             "mode":          mode.upper(),
-            "current_step":  "BROWSE",
             "nunchi_signal": nunchi_signal,
         }
 

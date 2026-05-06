@@ -58,8 +58,15 @@ async def transition_step(state: "KioskState") -> dict:
         {"role": "user", "content": f"현재 단계: {current_step}\n사용자 발화: {last_user_msg}"},
     ])
 
-    raw = response.content.strip()
-    next_step = None if raw.lower() == "null" else raw
+    _VALID_STEPS = {"BROWSE", "SELECT", "CONFIGURE", "CHECKOUT"}
+    raw = response.content.strip().strip("`\"' .").upper()
+    if raw == "NULL":
+        next_step = None
+    elif raw in _VALID_STEPS:
+        next_step = raw
+    else:
+        logging.warning(f"[step 결정 형식 오류] raw={response.content!r} session={session_id}")
+        return {"current_step": current_step}
 
     if next_step and session_id:
         spring = get_spring_adapter()

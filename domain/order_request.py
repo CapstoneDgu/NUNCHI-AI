@@ -91,9 +91,9 @@ class ChatOrderRequest(BaseModel):
         examples=["hesitation"],
     )
     mode: SessionMode = Field(
-        default=SessionMode.normal,
+        default=SessionMode.avatar,
         description="현재 세션의 UI 모드입니다. `AVATAR` 또는 `NORMAL` 값을 사용합니다.",
-        examples=["NORMAL"],
+        examples=["AVATAR"],
     )
 
 
