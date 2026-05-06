@@ -65,7 +65,12 @@ async def update_step(spring: SpringAdapter, session_id: int, step: str) -> dict
 
 
 async def get_messages(spring: SpringAdapter, session_id: int, limit: int = 100) -> list[ConversationMessage]:
-    """대화 이력 조회 — GET /api/sessions/{sessionId}/messages"""
+    """대화 이력 조회 — GET /api/sessions/{sessionId}/messages
+
+    최근 N개를 시간 오름차순으로 반환한다. limit은 1 이상이어야 한다.
+    """
+    if limit < 1:
+        raise ValueError(f"limit은 1 이상이어야 합니다. 전달값: {limit}")
     data = await spring.get(f"/api/sessions/{session_id}/messages", params={"limit": limit})
     try:
         return [ConversationMessage.model_validate(item) for item in data]
