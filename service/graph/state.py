@@ -9,6 +9,8 @@ from typing_extensions import TypedDict
 class KioskState(TypedDict):
     messages: Annotated[list, add_messages]  # 대화 히스토리 (자동 누적)
     session_id: int
+    mode: str                                # "AVATAR" 또는 "NORMAL"
+    current_step: Optional[str]              # "BROWSE" / "SELECT" / "CONFIGURE" / "CHECKOUT" / None
     intent: Optional[str]                    # 분류된 의도 (order/payment/recommend/hesitation)
     order_id: Optional[int]                  # confirm_order 후 채워짐
     payment_id: Optional[int]               # request_payment 후 채워짐
