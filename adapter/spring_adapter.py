@@ -33,9 +33,9 @@ class SpringAdapter(SpringPort):
 
         logging.debug("[Spring 응답] HTTP %d | path 응답 수신", response.status_code)
 
-        # Spring 공통 응답은 code / msg 사용
+        # Spring 공통 응답은 code / msg 사용 (DELETE는 204 반환)
         status = body.get("code")
-        if status not in (200, 201):
+        if status not in (200, 201, 204):
             raise SpringApiError(
                 message=body.get("msg", "Spring API 오류"),
                 status_code=status or response.status_code,

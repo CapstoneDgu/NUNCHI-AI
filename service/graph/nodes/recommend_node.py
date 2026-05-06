@@ -60,11 +60,11 @@ async def run_recommend_agent(state: KioskState) -> dict:
 
     llm = ChatOpenAI(model=s.openai_model, api_key=s.openai_api_key, temperature=0.5)
 
-    async with MultiServerMCPClient(
+    client = MultiServerMCPClient(
         {"kiosk": {"url": f"{s.mcp_server_url}/sse", "transport": "sse"}}
-    ) as client:
-        tools = await client.get_tools()
-        agent = create_react_agent(llm, tools, prompt=_RECOMMEND_SYSTEM_PROMPT)
-        result = await agent.ainvoke({"messages": state["messages"]})
+    )
+    tools = await client.get_tools()
+    agent = create_react_agent(llm, tools, prompt=_RECOMMEND_SYSTEM_PROMPT)
+    result = await agent.ainvoke({"messages": state["messages"]})
 
     return {"messages": result["messages"]}

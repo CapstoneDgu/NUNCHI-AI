@@ -4,7 +4,6 @@
 MultiServerMCPClient로 FastMCP 서버에 연결해 Tool 목록을 가져온다.
 """
 
-from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
@@ -16,11 +15,13 @@ _ORDER_SYSTEM_PROMPT = """
 너는 키오스크 주문 AI 어시스턴트다.
 사용자가 메뉴를 탐색하거나 장바구니를 관리할 수 있도록 도와줘.
 
+중요: Tool을 호출할 때 session_id가 필요한 Tool은 반드시 state에서 받은 session_id를 사용해라. 임의로 바꾸지 마라.
+
 [NER + 메뉴 검색 플로우]
 1. 사용자 발화에서 메뉴명을 추출한다.
 2. tool_search_menus(name=추출한_메뉴명) 을 호출해 menuId를 확보한다.
 3. 검색 결과가 여럿이면 대화 맥락에서 가장 적합한 것을 선택한다.
-4. tool_add_cart_item(menuId=..., quantity=..., optionIds=[]) 으로 장바구니에 담는다.
+4. tool_add_cart_item(session_id=..., menuId=..., quantity=..., optionIds=[]) 으로 장바구니에 담는다.
 
 [병렬 주문]
 사용자가 여러 메뉴를 동시에 말하면 순서대로 (search → add) 를 반복한다.
@@ -41,27 +42,8 @@ _ORDER_SYSTEM_PROMPT = """
 - 옵션이 없으면 option_ids는 빈 배열([])로 전달해라.
 - 메뉴명이나 가격을 임의로 만들지 말고 반드시 Tool로 조회한 결과만 사용해라.
 - 응답은 한국어로 친절하고 간결하게 해라.
+- tool_save_message는 절대 호출하지 마라. 메시지 저장은 시스템이 자동 처리한다.
 """.strip()
-
-
-def _bind_session_id(tools: list[BaseTool], session_id: int) -> list[BaseTool]:
-    """session_id 파라미터를 가진 tool에 state의 session_id를 강제 주입한다.
-    LLM이 전달한 값을 무시하고 항상 state 값으로 덮어써서 세션 혼동을 방지한다."""
-    result = []
-    for tool in tools:
-        if "session_id" not in (tool.args or {}):
-            result.append(tool)
-            continue
-
-        original_coroutine = tool.coroutine
-
-        async def _wrapped(*args, _orig=original_coroutine, _sid=session_id, **kwargs):
-            kwargs["session_id"] = _sid
-            return await _orig(*args, **kwargs)
-
-        tool.coroutine = _wrapped
-        result.append(tool)
-    return result
 
 
 _AVATAR_TONE = (
@@ -83,16 +65,15 @@ async def run_order_agent(state: KioskState) -> dict:
     mode = state.get("mode", "NORMAL")
 
     tone = _AVATAR_TONE if mode == "AVATAR" else _NORMAL_TONE
-    system_prompt = tone + _ORDER_SYSTEM_PROMPT
+    system_prompt = tone + f"현재 session_id: {session_id}\n\n" + _ORDER_SYSTEM_PROMPT
 
     llm = ChatOpenAI(model=s.openai_model, api_key=s.openai_api_key, temperature=0.3)
 
-    async with MultiServerMCPClient(
+    client = MultiServerMCPClient(
         {"kiosk": {"url": f"{s.mcp_server_url}/sse", "transport": "sse"}}
-    ) as client:
-        raw_tools = await client.get_tools()
-        tools = _bind_session_id(raw_tools, session_id)
-        agent = create_react_agent(llm, tools, prompt=system_prompt)
-        result = await agent.ainvoke({"messages": state["messages"]})
+    )
+    tools = await client.get_tools()
+    agent = create_react_agent(llm, tools, prompt=system_prompt)
+    result = await agent.ainvoke({"messages": state["messages"]})
 
     return {"messages": result["messages"]}
