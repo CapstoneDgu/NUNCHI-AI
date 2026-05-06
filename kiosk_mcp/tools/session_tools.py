@@ -57,3 +57,18 @@ async def complete_session(spring: SpringAdapter, session_id: int) -> dict:
     result = await spring.patch(f"/api/sessions/{session_id}/complete")
     logging.warning(f"[세션 종료 완료] result={result}")
     return result
+
+
+async def update_step(spring: SpringAdapter, session_id: int, step: str) -> dict:
+    """주문 단계 업데이트 — PATCH /api/sessions/{sessionId}/step"""
+    return await spring.patch(f"/api/sessions/{session_id}/step", {"step": step})
+
+
+async def get_messages(spring: SpringAdapter, session_id: int, limit: int = 100) -> list[ConversationMessage]:
+    """대화 이력 조회 — GET /api/sessions/{sessionId}/messages"""
+    data = await spring.get(f"/api/sessions/{session_id}/messages", params={"limit": limit})
+    try:
+        return [ConversationMessage.model_validate(item) for item in data]
+    except Exception as exc:
+        logging.error(f"[대화 이력 파싱 오류] session_id={session_id} | {exc}")
+        raise

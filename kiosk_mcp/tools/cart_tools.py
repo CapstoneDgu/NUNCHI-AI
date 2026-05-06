@@ -67,3 +67,8 @@ async def remove_cart_item(spring: SpringAdapter, session_id: int, item_id: str)
     except ValidationError as exc:
         logging.error(f"[장바구니 삭제 파싱 오류] data={data} | {exc}")
         raise SpringApiError("장바구니 삭제 응답 스키마 불일치", status_code=502) from exc
+
+
+async def clear_cart(spring: SpringAdapter, session_id: int) -> dict:
+    """장바구니 전체 초기화 — DELETE /api/orders/cart/{sessionId}"""
+    return await spring.delete(f"/api/orders/cart/{session_id}")

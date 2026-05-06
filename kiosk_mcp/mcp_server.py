@@ -18,11 +18,11 @@ from fastmcp import FastMCP
 from adapter.spring_adapter import SpringAdapter
 from core.config import get_mcp_settings
 from domain.payment import PaymentMethod
-from kiosk_mcp.tools.cart_tools import add_cart_item, get_cart, remove_cart_item, update_cart_item
-from kiosk_mcp.tools.menu_tools import filter_menus, get_categories, get_menu_detail, get_menus, get_top_menus
+from kiosk_mcp.tools.cart_tools import add_cart_item, clear_cart, get_cart, remove_cart_item, update_cart_item
+from kiosk_mcp.tools.menu_tools import filter_menus, get_categories, get_menu_detail, get_menus, get_top_menus, search_menus
 from kiosk_mcp.tools.order_tools import confirm_order
 from kiosk_mcp.tools.payment_tools import request_payment
-from kiosk_mcp.tools.session_tools import complete_session, create_session, save_message, save_tool_log
+from kiosk_mcp.tools.session_tools import complete_session, create_session, save_message, save_tool_log, update_step
 from domain.session import SessionMode
 
 _settings = get_mcp_settings()
@@ -154,6 +154,22 @@ async def tool_filter_menus(
     )
 
 
+@mcp_app.tool()
+async def tool_search_menus(name: str) -> str:
+    """메뉴명으로 검색한다. 발화에서 추출한 메뉴명을 넣으면 menuId를 포함한 목록을 반환한다."""
+    return json.dumps(
+        [m.model_dump() for m in await search_menus(_spring, name)],
+        ensure_ascii=False,
+    )
+
+
+@mcp_app.tool()
+async def tool_update_step(session_id: int, step: str) -> str:
+    """주문 단계를 이동한다. step 값: BROWSE / SELECT / CONFIGURE / CHECKOUT"""
+    result = await update_step(_spring, session_id, step)
+    return json.dumps(result, ensure_ascii=False)
+
+
 # ─── 장바구니 Tool ────────────────────────────────────────────────────────────
 
 @mcp_app.tool()
@@ -193,6 +209,13 @@ async def tool_update_cart_item(session_id: int, item_id: str, quantity: int) ->
         result,
     )
     return result
+
+
+@mcp_app.tool()
+async def tool_clear_cart(session_id: int) -> str:
+    """장바구니 전체를 초기화한다. 루프백 재시작 또는 전체 취소 시 사용한다."""
+    result = await clear_cart(_spring, session_id)
+    return json.dumps(result, ensure_ascii=False)
 
 
 @mcp_app.tool()
