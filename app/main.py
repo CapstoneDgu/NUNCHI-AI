@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from adapter.factory import get_spring_adapter
 from app.api import order, voice
@@ -78,6 +79,22 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# CORS 설정
+# 브라우저에서 FastAPI를 직접 호출할 때 발생하는 preflight OPTIONS 요청을 허용한다.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://43.201.20.11:8080",
+        "http://43.201.20.11",
+        "http://localhost:8080",
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # 라우터 등록
 app.include_router(order.router)
 app.include_router(voice.router)
@@ -87,6 +104,7 @@ app.include_router(voice.router)
 @app.exception_handler(SpringApiError)
 async def spring_api_error_handler(request, exc: SpringApiError):
     from fastapi.responses import JSONResponse
+
     return JSONResponse(
         status_code=502,
         content={"code": exc.code, "message": exc.message},
@@ -96,6 +114,7 @@ async def spring_api_error_handler(request, exc: SpringApiError):
 @app.exception_handler(KioskError)
 async def kiosk_error_handler(request, exc: KioskError):
     from fastapi.responses import JSONResponse
+
     return JSONResponse(
         status_code=400,
         content={"code": exc.code, "message": exc.message},
@@ -108,8 +127,8 @@ async def kiosk_error_handler(request, exc: KioskError):
     response_model=HealthCheckResponse,
     summary="서버 상태 확인",
     description=(
-        "서버가 요청을 받을 수 있는 상태인지 빠르게 확인하는 API입니다.\n\n"
-        "일반적으로 배포 직후 상태 점검, 로드밸런서 헬스 체크, 모니터링 시스템 연동에 사용합니다."
+            "서버가 요청을 받을 수 있는 상태인지 빠르게 확인하는 API입니다.\n\n"
+            "일반적으로 배포 직후 상태 점검, 로드밸런서 헬스 체크, 모니터링 시스템 연동에 사용합니다."
     ),
     response_description="서버가 정상 동작 중이면 `status=ok`를 반환합니다.",
     responses={
