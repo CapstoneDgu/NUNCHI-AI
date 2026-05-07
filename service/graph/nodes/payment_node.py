@@ -40,11 +40,11 @@ async def run_payment_agent(state: KioskState) -> dict:
 
     llm = ChatOpenAI(model=s.openai_model, api_key=s.openai_api_key, temperature=0)
 
-    async with MultiServerMCPClient(
+    client = MultiServerMCPClient(
         {"kiosk": {"url": f"{s.mcp_server_url}/sse", "transport": "sse"}}
-    ) as client:
-        tools = client.get_tools()
-        agent = create_react_agent(llm, tools, prompt=prompt)
-        result = await agent.ainvoke({"messages": state["messages"]})
+    )
+    tools = await client.get_tools()
+    agent = create_react_agent(llm, tools, prompt=prompt)
+    result = await agent.ainvoke({"messages": state["messages"]})
 
     return {"messages": result["messages"]}

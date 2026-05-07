@@ -16,16 +16,16 @@ from typing import Optional
 from fastmcp import FastMCP
 
 from adapter.spring_adapter import SpringAdapter
-from core.config import get_settings
+from core.config import get_mcp_settings
 from domain.payment import PaymentMethod
-from kiosk_mcp.tools.cart_tools import add_cart_item, get_cart, remove_cart_item, update_cart_item
-from kiosk_mcp.tools.menu_tools import filter_menus, get_categories, get_menu_detail, get_menus, get_top_menus
+from kiosk_mcp.tools.cart_tools import add_cart_item, clear_cart, get_cart, remove_cart_item, update_cart_item
+from kiosk_mcp.tools.menu_tools import filter_menus, get_categories, get_menu_detail, get_menus, get_top_menus, search_menus
 from kiosk_mcp.tools.order_tools import confirm_order
 from kiosk_mcp.tools.payment_tools import request_payment
-from kiosk_mcp.tools.session_tools import complete_session, create_session, save_message, save_tool_log
+from kiosk_mcp.tools.session_tools import complete_session, create_session, save_message, save_tool_log, update_step
 from domain.session import SessionMode
 
-_settings = get_settings()
+_settings = get_mcp_settings()
 _spring = SpringAdapter(_settings)
 
 _INSTRUCTIONS = """
@@ -118,6 +118,8 @@ async def tool_filter_menus(
     category_id: Optional[int] = None,
     exclude_allergies: Optional[str] = None,
     limit: Optional[int] = None,
+    restaurant_name: Optional[str] = None,
+    floor: Optional[int] = None,
 ) -> str:
     """조건에 맞는 메뉴를 필터링해 반환한다. 파라미터는 모두 Optional.
 
@@ -133,6 +135,8 @@ async def tool_filter_menus(
     - exclude_allergies: 제외할 알레르기 콤마 구분 영문 enum
       (MILK, EGG, WHEAT, SOY, PEANUT, WALNUT, PINE, SHRIMP, CRAB, SQUID, CLAM, BEEF, PORK, CHICKEN, PEACH, TOMATO, BUCKWHEAT)
     - limit: 반환할 최대 메뉴 수 (추천은 보통 3~5 권장)
+    - restaurant_name: 식당명 필터. 지정 시 해당 식당 + 공용 메뉴(null) 포함
+    - floor: 층 필터. 지정 시 해당 층 + 공용 메뉴(null) 포함
     """
     kwargs = {k: v for k, v in {
         "max_calorie": max_calorie, "min_calorie": min_calorie,
@@ -142,11 +146,28 @@ async def tool_filter_menus(
         "temperature_type": temperature_type, "vegetarian_type": vegetarian_type,
         "season": season, "category_id": category_id,
         "exclude_allergies": exclude_allergies, "limit": limit,
+        "restaurant_name": restaurant_name, "floor": floor,
     }.items() if v is not None}
     return json.dumps(
         [m.model_dump() for m in await filter_menus(_spring, **kwargs)],
         ensure_ascii=False,
     )
+
+
+@mcp_app.tool()
+async def tool_search_menus(name: str) -> str:
+    """메뉴명으로 검색한다. 발화에서 추출한 메뉴명을 넣으면 menuId를 포함한 목록을 반환한다."""
+    return json.dumps(
+        [m.model_dump() for m in await search_menus(_spring, name)],
+        ensure_ascii=False,
+    )
+
+
+@mcp_app.tool()
+async def tool_update_step(session_id: int, step: str) -> str:
+    """주문 단계를 이동한다. step 값: BROWSE / SELECT / CONFIGURE / CHECKOUT"""
+    result = await update_step(_spring, session_id, step)
+    return json.dumps(result, ensure_ascii=False)
 
 
 # ─── 장바구니 Tool ────────────────────────────────────────────────────────────
@@ -191,6 +212,13 @@ async def tool_update_cart_item(session_id: int, item_id: str, quantity: int) ->
 
 
 @mcp_app.tool()
+async def tool_clear_cart(session_id: int) -> str:
+    """장바구니 전체를 초기화한다. 루프백 재시작 또는 전체 취소 시 사용한다."""
+    result = await clear_cart(_spring, session_id)
+    return json.dumps(result, ensure_ascii=False)
+
+
+@mcp_app.tool()
 async def tool_remove_cart_item(session_id: int, item_id: str) -> str:
     """장바구니 아이템을 삭제한다. item_id는 장바구니 조회 결과의 item_id(UUID)다."""
     result = json.dumps(
@@ -226,7 +254,7 @@ async def tool_request_payment(session_id: int, order_id: int, method: str) -> s
     except ValueError:
         return f"지원하지 않는 결제 수단입니다: {method}. IC_CARD 또는 VEIN_AUTH 중 하나를 선택해주세요."
     result = json.dumps(
-        (await request_payment(_spring, order_id, payment_method)).model_dump(),
+        (await request_payment(_spring, order_id, payment_method)).model_dump(mode="json"),
         ensure_ascii=False,
     )
     await save_tool_log(
