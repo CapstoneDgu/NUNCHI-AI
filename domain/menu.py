@@ -70,7 +70,7 @@ class MenuSummary(BaseModel):
 
 
 class TopMenuSummary(BaseModel):
-    """GET /api/menus/top 응답 항목 (오늘 판매량 포함)"""
+    """GET /api/menus/top 응답 항목 (오늘 판매량 + 이미지 + 위치 포함)"""
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -79,6 +79,9 @@ class TopMenuSummary(BaseModel):
     price: int
     quantity_sold: int = Field(alias="quantitySold")
     is_sold_out: bool = Field(alias="isSoldOut")
+    image_url: Optional[str] = Field(default=None, alias="imageUrl")
+    restaurant_name: Optional[str] = Field(default=None, alias="restaurantName")
+    floor: Optional[int] = None
 
 
 class FilterMenuResult(BaseModel):

@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class PaymentMethod(str, Enum):
     ic_card   = "IC_CARD"
     vein_auth = "VEIN_AUTH"
+    barcode   = "BARCODE"
 
 
 class PaymentStatus(str, Enum):
