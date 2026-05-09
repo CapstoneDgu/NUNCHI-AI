@@ -50,7 +50,7 @@ async def start_order(
     service: OrderService = Depends(get_order_service),
 ) -> StartOrderResponse:
     """주문 세션을 시작하고 첫 인사 메시지를 반환한다."""
-    return await service.start(mode=body.mode, language=body.language)
+    return await service.start(mode=body.mode, language=body.language, order_type=body.order_type)
 
 
 @router.post(

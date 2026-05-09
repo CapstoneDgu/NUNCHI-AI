@@ -48,9 +48,11 @@ mcp_app = FastMCP("nunchi-kiosk", instructions=_INSTRUCTIONS)
 # ─── 세션 시작 / 대화 저장 Tool ──────────────────────────────────────────────
 
 @mcp_app.tool()
-async def tool_create_session(language: str = "ko") -> str:
-    """대화 세션을 시작한다. 반드시 대화 첫 번째로 호출해야 한다. session_id를 반환한다."""
-    result = await create_session(_spring, mode=SessionMode.avatar, language=language)
+async def tool_create_session(language: str = "ko", order_type: str = "DINE_IN") -> str:
+    """대화 세션을 시작한다. 반드시 대화 첫 번째로 호출해야 한다. session_id를 반환한다. order_type은 DINE_IN(매장) 또는 TAKEOUT(포장)."""
+    from domain.session import OrderType
+    ot = OrderType(order_type.upper())
+    result = await create_session(_spring, mode=SessionMode.avatar, language=language, order_type=ot)
     return json.dumps({"session_id": result.session_id}, ensure_ascii=False)
 
 

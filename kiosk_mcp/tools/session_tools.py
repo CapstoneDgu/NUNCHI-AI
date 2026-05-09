@@ -4,16 +4,17 @@ import logging
 
 from adapter.spring_adapter import SpringAdapter
 from domain.conversation import ConversationMessage
-from domain.session import SessionMode, SessionResult
+from domain.session import OrderType, SessionMode, SessionResult
 
 
 async def create_session(
     spring: SpringAdapter,
     mode: SessionMode = SessionMode.avatar,
     language: str = "ko",
+    order_type: OrderType = OrderType.dine_in,
 ) -> SessionResult:
     """주문 세션 시작 — POST /api/sessions"""
-    data = await spring.post("/api/sessions", {"mode": mode.value, "language": language})
+    data = await spring.post("/api/sessions", {"mode": mode.value, "language": language, "orderType": order_type.value})
     try:
         return SessionResult.model_validate(data)
     except Exception as exc:
