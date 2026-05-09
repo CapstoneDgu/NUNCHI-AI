@@ -15,7 +15,7 @@ from domain.order_request import (
 )
 from service.order_service import OrderService
 
-router = APIRouter(prefix="/api/order", tags=["order"])
+router = APIRouter(prefix="/order", tags=["order"])
 
 
 @router.post(

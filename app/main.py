@@ -96,8 +96,8 @@ app.add_middleware(
 )
 
 # 라우터 등록
-app.include_router(order.router)
-app.include_router(voice.router)
+app.include_router(order.router, prefix="/ai")
+app.include_router(voice.router, prefix="/ai")
 
 
 # 공통 예외 핸들러
