@@ -1,15 +1,15 @@
 """주문 에이전트 노드
 
 메뉴 탐색, 장바구니 담기/수정/삭제를 처리하는 ReAct 에이전트.
-MultiServerMCPClient로 FastMCP 서버에 연결해 Tool 목록을 가져온다.
+초기화 시 캐싱된 MCP Tool 목록(get_mcp_tools)을 재사용한다.
 """
 
-from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
 from core.config import get_settings
 from service.graph.state import KioskState
+from service.mcp_client import get_mcp_tools
 
 _ORDER_SYSTEM_PROMPT = """
 너는 키오스크 주문 AI 어시스턴트다.
@@ -82,10 +82,7 @@ async def run_order_agent(state: KioskState) -> dict:
 
     llm = ChatOpenAI(model=s.openai_model, api_key=s.openai_api_key, temperature=0.3)
 
-    client = MultiServerMCPClient(
-        {"kiosk": {"url": f"{s.mcp_server_url}/sse", "transport": "sse"}}
-    )
-    tools = await client.get_tools()
+    tools = get_mcp_tools()
     agent = create_react_agent(llm, tools, prompt=system_prompt)
     result = await agent.ainvoke({"messages": state["messages"]})
 

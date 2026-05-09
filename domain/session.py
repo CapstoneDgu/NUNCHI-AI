@@ -15,6 +15,11 @@ class SessionStatus(str, Enum):
     expired   = "EXPIRED"
 
 
+class OrderType(str, Enum):
+    dine_in = "DINE_IN"
+    takeout = "TAKEOUT"
+
+
 class SessionResult(BaseModel):
     """POST /api/sessions 응답"""
 
@@ -24,4 +29,5 @@ class SessionResult(BaseModel):
     mode: SessionMode
     status: SessionStatus
     language: str
+    order_type: OrderType = Field(alias="orderType")
     created_at: datetime = Field(alias="createdAt")
