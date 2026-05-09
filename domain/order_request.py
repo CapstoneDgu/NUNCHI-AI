@@ -6,7 +6,7 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from domain.session import SessionMode
+from domain.session import OrderType, SessionMode
 
 
 class StartOrderRequest(BaseModel):
@@ -17,6 +17,7 @@ class StartOrderRequest(BaseModel):
             "example": {
                 "mode": "AVATAR",
                 "language": "ko",
+                "order_type": "DINE_IN",
             }
         }
     )
@@ -34,6 +35,11 @@ class StartOrderRequest(BaseModel):
         default="ko",
         description="세션에서 사용할 언어 코드입니다. 현재 기본값은 한국어(`ko`)입니다.",
         examples=["ko"],
+    )
+    order_type: OrderType = Field(
+        default=OrderType.dine_in,
+        description="주문 유형입니다. `DINE_IN`은 매장 식사, `TAKEOUT`은 포장입니다.",
+        examples=["DINE_IN"],
     )
 
 

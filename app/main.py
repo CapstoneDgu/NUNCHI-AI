@@ -7,6 +7,7 @@ from adapter.factory import get_spring_adapter
 from app.api import order, voice
 from domain.api_response import ApiErrorResponse, HealthCheckResponse
 from core.exceptions import KioskError, SpringApiError
+from service.mcp_client import initialize_mcp_client
 
 _API_DESCRIPTION = """
 ## 개요
@@ -64,9 +65,8 @@ _OPENAPI_TAGS = [
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 서버 시작 시 초기화할 것이 있으면 여기에 추가
+    await initialize_mcp_client()
     yield
-    # 공유 HTTP 클라이언트 정리
     await get_spring_adapter().close()
 
 
@@ -96,8 +96,8 @@ app.add_middleware(
 )
 
 # 라우터 등록
-app.include_router(order.router)
-app.include_router(voice.router)
+app.include_router(order.router, prefix="/ai")
+app.include_router(voice.router, prefix="/ai")
 
 
 # 공통 예외 핸들러

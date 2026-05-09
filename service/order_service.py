@@ -12,7 +12,7 @@ from langchain_core.messages import HumanMessage
 
 from adapter.spring_adapter import SpringAdapter
 from domain.order_request import ChatOrderResponse, StartOrderResponse
-from domain.session import SessionMode
+from domain.session import OrderType, SessionMode
 from kiosk_mcp.tools.session_tools import create_session, save_message
 from service.graph.kiosk_graph import build_kiosk_graph
 
@@ -28,9 +28,10 @@ class OrderService:
         self,
         mode: SessionMode = SessionMode.avatar,
         language: str = "ko",
+        order_type: OrderType = OrderType.dine_in,
     ) -> StartOrderResponse:
         """Spring 세션을 생성하고 첫 인사 메시지를 반환한다."""
-        session = await create_session(self._spring, mode, language)
+        session = await create_session(self._spring, mode, language, order_type)
 
         # 첫 인사 — LLM 호출 없이 고정 메시지로 빠르게 응답
         return StartOrderResponse(

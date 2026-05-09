@@ -5,6 +5,7 @@ from enum import Enum
 from pydantic import BaseModel, ConfigDict, Field
 
 from domain.cart import CartItem, CartItemOption
+from domain.session import OrderType
 
 
 class OrderStatus(str, Enum):
@@ -36,4 +37,5 @@ class OrderResult(BaseModel):
     session_id:   int         = Field(alias="sessionId")
     total_amount: int         = Field(alias="totalAmount")
     order_status: OrderStatus = Field(alias="orderStatus")
+    order_type:   OrderType   = Field(alias="orderType")
     items:        list[OrderItem] = Field(default_factory=list)

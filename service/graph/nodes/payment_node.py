@@ -4,12 +4,12 @@
 흐름을 순서대로 처리하는 ReAct 에이전트.
 """
 
-from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
 from core.config import get_settings
 from service.graph.state import KioskState
+from service.mcp_client import get_mcp_tools
 
 _PAYMENT_SYSTEM_PROMPT = """
 너는 키오스크 결제 AI 어시스턴트다.
@@ -40,10 +40,7 @@ async def run_payment_agent(state: KioskState) -> dict:
 
     llm = ChatOpenAI(model=s.openai_model, api_key=s.openai_api_key, temperature=0)
 
-    client = MultiServerMCPClient(
-        {"kiosk": {"url": f"{s.mcp_server_url}/sse", "transport": "sse"}}
-    )
-    tools = await client.get_tools()
+    tools = get_mcp_tools()
     agent = create_react_agent(llm, tools, prompt=prompt)
     result = await agent.ainvoke({"messages": state["messages"]})
 

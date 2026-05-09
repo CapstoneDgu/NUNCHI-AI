@@ -2,7 +2,7 @@ from fastapi import APIRouter, status
 
 from domain.api_response import ApiErrorResponse
 
-router = APIRouter(prefix="/api/voice", tags=["voice"])
+router = APIRouter(prefix="/voice", tags=["voice"])
 
 
 @router.post(
