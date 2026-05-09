@@ -1,7 +1,7 @@
 """주문 에이전트 노드
 
 메뉴 탐색, 장바구니 담기/수정/삭제를 처리하는 ReAct 에이전트.
-MultiServerMCPClient로 FastMCP 서버에 연결해 Tool 목록을 가져온다.
+초기화 시 캐싱된 MCP Tool 목록(get_mcp_tools)을 재사용한다.
 """
 
 from langchain_openai import ChatOpenAI
