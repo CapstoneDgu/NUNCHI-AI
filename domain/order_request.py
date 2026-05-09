@@ -9,6 +9,18 @@ from pydantic import BaseModel, ConfigDict, Field
 from domain.session import OrderType, SessionMode
 
 
+class RecommendedMenu(BaseModel):
+    """추천 메뉴 카드 단위 정보 — 프론트엔드 UI 렌더링용"""
+
+    menu_id: int
+    name: str
+    price: int
+    image_url: Optional[str] = None
+    restaurant_name: Optional[str] = None
+    floor: Optional[int] = None
+    quantity_sold: Optional[int] = None
+
+
 class StartOrderRequest(BaseModel):
     """POST /api/order/start 요청"""
 
@@ -110,7 +122,18 @@ class ChatOrderResponse(BaseModel):
         json_schema_extra={
             "example": {
                 "session_id": 101,
-                "reply": "부담 없이 드시기 좋은 메뉴로는 아이스 아메리카노와 치킨 샌드위치를 추천드릴게요.",
+                "reply": "오늘 인기 메뉴를 추천해 드릴게요!",
+                "recommendations": [
+                    {
+                        "menu_id": 13,
+                        "name": "일식카레덮밥",
+                        "price": 7000,
+                        "image_url": "/images/menu/덮밥류/일식카레덮밥.png",
+                        "restaurant_name": "쇼앤누들",
+                        "floor": 1,
+                        "quantity_sold": 50,
+                    }
+                ],
             }
         }
     )
@@ -120,6 +143,10 @@ class ChatOrderResponse(BaseModel):
         examples=[101],
     )
     reply: str = Field(
-        description="AI가 생성한 자연어 응답입니다. 프론트엔드에서는 이 값을 그대로 출력하거나 TTS 입력으로 사용할 수 있습니다.",
-        examples=["부담 없이 드시기 좋은 메뉴로는 아이스 아메리카노와 치킨 샌드위치를 추천드릴게요."],
+        description="AI 안내 멘트. TTS 또는 아바타 대사로 사용한다.",
+        examples=["오늘 인기 메뉴를 추천해 드릴게요!"],
+    )
+    recommendations: Optional[list[RecommendedMenu]] = Field(
+        default=None,
+        description="추천 메뉴 카드 목록. 추천 응답일 때만 포함되며 최대 3개. 프론트엔드 카드 렌더링에 사용한다.",
     )

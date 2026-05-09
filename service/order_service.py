@@ -6,12 +6,14 @@ LangGraph 그래프를 실행하고, Spring 세션 생성/종료를 관리한다
 thread_id = session_id 로 LangGraph Checkpointer가 세션별 대화 상태를 자동 저장/복원한다.
 """
 
+import json
+import logging
 from typing import Optional
 
 from langchain_core.messages import HumanMessage
 
 from adapter.spring_adapter import SpringAdapter
-from domain.order_request import ChatOrderResponse, StartOrderResponse
+from domain.order_request import ChatOrderResponse, RecommendedMenu, StartOrderResponse
 from domain.session import OrderType, SessionMode
 from kiosk_mcp.tools.session_tools import create_session, save_message
 from service.graph.kiosk_graph import build_kiosk_graph
@@ -72,9 +74,31 @@ class OrderService:
         messages = result.get("messages") or []
         if not messages:
             raise RuntimeError("그래프 실행 결과에 메시지가 없습니다")
-        reply = messages[-1].content
+        raw = messages[-1].content
+
+        # 추천 노드가 JSON을 반환한 경우 파싱해 구조화 응답으로 변환
+        reply, recommendations = _parse_recommend_reply(raw)
 
         # 2. AI 응답 저장
         await save_message(self._spring, session_id, "ASSISTANT", reply)
 
-        return ChatOrderResponse(session_id=session_id, reply=reply)
+        return ChatOrderResponse(session_id=session_id, reply=reply, recommendations=recommendations)
+
+
+def _parse_recommend_reply(raw: str) -> tuple[str, Optional[list[RecommendedMenu]]]:
+    """추천 노드 JSON 응답을 파싱한다. JSON이 아니면 원본 텍스트를 그대로 반환한다."""
+    try:
+        text = raw.strip()
+        # ```json ... ``` 블록 제거
+        if text.startswith("```"):
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+        data = json.loads(text)
+        if "recommendations" not in data:
+            return raw, None
+        menus = [RecommendedMenu(**item) for item in data["recommendations"]]
+        return data.get("message", raw), menus
+    except Exception:
+        logging.debug("[추천 파싱 스킵] JSON 아님 — 원본 텍스트 반환")
+        return raw, None

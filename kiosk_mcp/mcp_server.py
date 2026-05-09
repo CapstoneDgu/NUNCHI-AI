@@ -21,7 +21,7 @@ from domain.payment import PaymentMethod
 from kiosk_mcp.tools.cart_tools import add_cart_item, clear_cart, get_cart, remove_cart_item, update_cart_item
 from kiosk_mcp.tools.menu_tools import filter_menus, get_categories, get_menu_detail, get_menus, get_top_menus, search_menus
 from kiosk_mcp.tools.order_tools import confirm_order
-from kiosk_mcp.tools.payment_tools import request_payment
+from kiosk_mcp.tools.payment_tools import confirm_payment_success, fail_payment, pay_by_barcode, request_payment
 from kiosk_mcp.tools.session_tools import complete_session, create_session, save_message, save_tool_log, update_step
 from domain.session import SessionMode
 
@@ -262,6 +262,60 @@ async def tool_request_payment(session_id: int, order_id: int, method: str) -> s
     await save_tool_log(
         _spring, session_id, "request_payment",
         json.dumps({"order_id": order_id, "method": method}),
+        result,
+    )
+    return result
+
+
+@mcp_app.tool()
+async def tool_pay_by_barcode(session_id: int, order_id: int, barcode_value: str) -> str:
+    """바코드로 결제한다. 즉시 SUCCESS 처리된다.
+    선행 조건: confirm_order 완료 → orderId 보유.
+    주문 확정 전 호출하면 ORDER_NOT_CONFIRMED(400) 에러가 반환된다.
+    """
+    result = json.dumps(
+        (await pay_by_barcode(_spring, order_id, barcode_value)).model_dump(mode="json"),
+        ensure_ascii=False,
+    )
+    await save_tool_log(
+        _spring, session_id, "pay_by_barcode",
+        json.dumps({"order_id": order_id, "barcode_value": barcode_value}),
+        result,
+    )
+    return result
+
+
+@mcp_app.tool()
+async def tool_confirm_payment_success(session_id: int, payment_id: int) -> str:
+    """IC_CARD / VEIN_AUTH 단말기 승인 완료 후 결제를 성공 처리한다.
+    tool_request_payment로 생성된 PENDING 상태의 payment_id를 사용해야 한다.
+    이미 SUCCESS 또는 FAILED 상태이면 400 반환.
+    """
+    result = json.dumps(
+        (await confirm_payment_success(_spring, payment_id)).model_dump(mode="json"),
+        ensure_ascii=False,
+    )
+    await save_tool_log(
+        _spring, session_id, "confirm_payment_success",
+        json.dumps({"payment_id": payment_id}),
+        result,
+    )
+    return result
+
+
+@mcp_app.tool()
+async def tool_fail_payment(session_id: int, payment_id: int) -> str:
+    """단말기 승인 실패 또는 사용자 취소 시 결제를 실패 처리한다.
+    FAILED 상태가 되면 동일 orderId로 재결제 가능.
+    이미 SUCCESS 또는 FAILED 상태이면 400 반환.
+    """
+    result = json.dumps(
+        (await fail_payment(_spring, payment_id)).model_dump(mode="json"),
+        ensure_ascii=False,
+    )
+    await save_tool_log(
+        _spring, session_id, "fail_payment",
+        json.dumps({"payment_id": payment_id}),
         result,
     )
     return result
