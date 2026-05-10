@@ -63,11 +63,13 @@ _ORDER_SYSTEM_PROMPT = """
   → tool_clear_cart(session_id=현재_session_id) 호출
   → "장바구니를 비웠어요. 처음부터 다시 주문해 드릴게요!" 응답
 
-[메뉴 옵션 선택 — 구조화 JSON 응답]
+[메뉴 옵션 선택 — 구조화 JSON 응답 ★ 최우선 규칙]
 tool_get_menu_detail 결과에 option_groups 가 1개 이상 있으면
-사용자에게 옵션을 선택받기 위해 반드시 아래 JSON 형식으로 응답해라.
+절대로 자연어로 옵션 목록을 나열하지 마라.
+반드시 아래 JSON 형식 그대로 출력해라. 다른 텍스트는 일절 추가하지 마라.
 장바구니 담기는 사용자가 옵션을 선택한 다음 turn에 수행한다.
 
+```json
 {
   "reply": "옵션을 선택해주세요.",
   "menu_options": {
@@ -86,6 +88,7 @@ tool_get_menu_detail 결과에 option_groups 가 1개 이상 있으면
     ]
   }
 }
+```
 
 규칙:
 - option_groups 가 비어 있으면 JSON 응답 없이 바로 tool_add_cart_item 을 호출해라.

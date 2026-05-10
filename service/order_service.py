@@ -99,6 +99,31 @@ class OrderService:
         )
 
 
+def _extract_json_block(raw: str) -> Optional[str]:
+    """응답 문자열에서 JSON 블록을 추출한다.
+
+    우선순위:
+    1. ```json ... ``` 블록이 있으면 그 안의 내용만 추출
+    2. 전체 문자열이 JSON이면 그대로 반환
+    3. 없으면 None 반환
+    """
+    text = raw.strip()
+    if "```json" in text:
+        start = text.index("```json") + len("```json")
+        end = text.index("```", start)
+        return text[start:end].strip()
+    if "```" in text:
+        parts = text.split("```")
+        if len(parts) >= 2:
+            candidate = parts[1].strip()
+            if candidate.startswith("json"):
+                candidate = candidate[4:].strip()
+            return candidate
+    if text.startswith("{"):
+        return text
+    return None
+
+
 def _parse_agent_reply(
     raw: str,
 ) -> tuple[str, Optional[list[RecommendedMenu]], Optional[MenuOptionsResponse]]:
@@ -107,15 +132,13 @@ def _parse_agent_reply(
     지원 키:
     - recommendations → 추천 메뉴 카드 목록
     - menu_options     → 옵션 선택 구조화 응답
-    JSON이 아니거나 두 키 모두 없으면 원본 텍스트를 그대로 반환한다.
+    JSON 블록이 없거나 두 키 모두 없으면 원본 텍스트를 그대로 반환한다.
     """
     try:
-        text = raw.strip()
-        if text.startswith("```"):
-            text = text.split("```")[1]
-            if text.startswith("json"):
-                text = text[4:]
-        data = json.loads(text)
+        json_str = _extract_json_block(raw)
+        if json_str is None:
+            return raw, None, None
+        data = json.loads(json_str)
 
         reply = data.get("reply") or data.get("message") or raw
         recommendations: Optional[list[RecommendedMenu]] = None
