@@ -21,6 +21,32 @@ class RecommendedMenu(BaseModel):
     quantity_sold: Optional[int] = None
 
 
+class MenuOptionItem(BaseModel):
+    """옵션 단일 항목 — 프론트엔드 옵션 선택 UI용"""
+
+    option_id: int
+    name: str
+    extra_price: int
+
+
+class MenuOptionGroup(BaseModel):
+    """옵션 그룹 — 하나의 선택 카테고리 (예: 온도, 사이즈)"""
+
+    group_id: int
+    group_name: str
+    is_required: bool
+    max_select: int
+    options: list[MenuOptionItem]
+
+
+class MenuOptionsResponse(BaseModel):
+    """메뉴 옵션 선택 단계 구조화 응답 — 프론트엔드 옵션 선택 UI 렌더링용"""
+
+    menu_id: int
+    menu_name: str
+    option_groups: list[MenuOptionGroup]
+
+
 class StartOrderRequest(BaseModel):
     """POST /api/order/start 요청"""
 
@@ -123,6 +149,7 @@ class ChatOrderResponse(BaseModel):
             "example": {
                 "session_id": 101,
                 "reply": "오늘 인기 메뉴를 추천해 드릴게요!",
+                "current_step": "BROWSE",
                 "recommendations": [
                     {
                         "menu_id": 13,
@@ -134,6 +161,7 @@ class ChatOrderResponse(BaseModel):
                         "quantity_sold": 50,
                     }
                 ],
+                "menu_options": None,
             }
         }
     )
@@ -146,7 +174,16 @@ class ChatOrderResponse(BaseModel):
         description="AI 안내 멘트. TTS 또는 아바타 대사로 사용한다.",
         examples=["오늘 인기 메뉴를 추천해 드릴게요!"],
     )
+    current_step: Optional[str] = Field(
+        default=None,
+        description="현재 주문 단계. BROWSE / SELECT / CONFIGURE / CHECKOUT 중 하나. 단계 UI 동기화에 사용한다.",
+        examples=["BROWSE"],
+    )
     recommendations: Optional[list[RecommendedMenu]] = Field(
         default=None,
         description="추천 메뉴 카드 목록. 추천 응답일 때만 포함되며 최대 3개. 프론트엔드 카드 렌더링에 사용한다.",
+    )
+    menu_options: Optional[MenuOptionsResponse] = Field(
+        default=None,
+        description="메뉴 옵션 선택 정보. CONFIGURE 단계에서 옵션이 있는 메뉴를 선택했을 때만 포함된다. 프론트엔드 옵션 선택 UI에 사용한다.",
     )
