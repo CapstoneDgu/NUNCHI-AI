@@ -13,7 +13,14 @@ from typing import Optional
 from langchain_core.messages import HumanMessage
 
 from adapter.spring_adapter import SpringAdapter
-from domain.order_request import ChatOrderResponse, RecommendedMenu, StartOrderResponse
+from domain.order_request import (
+    ChatOrderResponse,
+    MenuOptionGroup,
+    MenuOptionItem,
+    MenuOptionsResponse,
+    RecommendedMenu,
+    StartOrderResponse,
+)
 from domain.session import OrderType, SessionMode
 from kiosk_mcp.tools.session_tools import create_session, save_message
 from service.graph.kiosk_graph import build_kiosk_graph
@@ -76,29 +83,65 @@ class OrderService:
             raise RuntimeError("그래프 실행 결과에 메시지가 없습니다")
         raw = messages[-1].content
 
-        # 추천 노드가 JSON을 반환한 경우 파싱해 구조화 응답으로 변환
-        reply, recommendations = _parse_recommend_reply(raw)
+        # JSON 응답 파싱 (추천 / 옵션 구조화 응답)
+        reply, recommendations, menu_options = _parse_agent_reply(raw)
+        current_step = result.get("current_step")
 
         # 2. AI 응답 저장
         await save_message(self._spring, session_id, "ASSISTANT", reply)
 
-        return ChatOrderResponse(session_id=session_id, reply=reply, recommendations=recommendations)
+        return ChatOrderResponse(
+            session_id=session_id,
+            reply=reply,
+            current_step=current_step,
+            recommendations=recommendations,
+            menu_options=menu_options,
+        )
 
 
-def _parse_recommend_reply(raw: str) -> tuple[str, Optional[list[RecommendedMenu]]]:
-    """추천 노드 JSON 응답을 파싱한다. JSON이 아니면 원본 텍스트를 그대로 반환한다."""
+def _parse_agent_reply(
+    raw: str,
+) -> tuple[str, Optional[list[RecommendedMenu]], Optional[MenuOptionsResponse]]:
+    """에이전트 JSON 응답을 파싱한다.
+
+    지원 키:
+    - recommendations → 추천 메뉴 카드 목록
+    - menu_options     → 옵션 선택 구조화 응답
+    JSON이 아니거나 두 키 모두 없으면 원본 텍스트를 그대로 반환한다.
+    """
     try:
         text = raw.strip()
-        # ```json ... ``` 블록 제거
         if text.startswith("```"):
             text = text.split("```")[1]
             if text.startswith("json"):
                 text = text[4:]
         data = json.loads(text)
-        if "recommendations" not in data:
-            return raw, None
-        menus = [RecommendedMenu(**item) for item in data["recommendations"]]
-        return data.get("message", raw), menus
+
+        reply = data.get("reply") or data.get("message") or raw
+        recommendations: Optional[list[RecommendedMenu]] = None
+        menu_options: Optional[MenuOptionsResponse] = None
+
+        if "recommendations" in data:
+            recommendations = [RecommendedMenu(**item) for item in data["recommendations"]]
+
+        if "menu_options" in data:
+            mo = data["menu_options"]
+            menu_options = MenuOptionsResponse(
+                menu_id=mo["menu_id"],
+                menu_name=mo["menu_name"],
+                option_groups=[
+                    MenuOptionGroup(
+                        group_id=g["group_id"],
+                        group_name=g["group_name"],
+                        is_required=g.get("is_required", False),
+                        max_select=g.get("max_select", 1),
+                        options=[MenuOptionItem(**o) for o in g["options"]],
+                    )
+                    for g in mo.get("option_groups", [])
+                ],
+            )
+
+        return reply, recommendations, menu_options
     except Exception:
-        logging.debug("[추천 파싱 스킵] JSON 아님 — 원본 텍스트 반환")
-        return raw, None
+        logging.debug("[에이전트 응답 파싱 스킵] JSON 아님 — 원본 텍스트 반환")
+        return raw, None, None

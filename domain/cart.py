@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -22,6 +24,7 @@ class CartItem(BaseModel):
     unit_price: int = Field(alias="unitPrice")
     quantity: int
     item_total: int = Field(alias="itemTotal")
+    image_url: Optional[str] = Field(default=None, alias="imageUrl")
     options: list[CartItemOption] = Field(default_factory=list)
 
 
