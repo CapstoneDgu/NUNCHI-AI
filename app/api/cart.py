@@ -28,7 +28,7 @@ def _get_spring() -> SpringAdapter:
     description=(
         "추천 카드의 '메뉴담기' 버튼 클릭 시 호출하는 전용 엔드포인트입니다.\n\n"
         "LLM을 거치지 않고 Spring 장바구니 API를 직접 호출합니다. "
-        "`menu_id`는 `/api/order/chat` 응답의 `recommendations[].menu_id` 값을 그대로 사용합니다.\n\n"
+        "`menu_id`는 `/ai/api/order/chat` 응답의 `recommendations[].menu_id` 값을 그대로 사용합니다.\n\n"
         "옵션이 없는 메뉴는 `option_ids`를 빈 배열로 전달합니다. "
         "옵션이 있는 메뉴는 chat을 통해 옵션 선택 UI를 거친 뒤 이 엔드포인트를 호출합니다."
     ),

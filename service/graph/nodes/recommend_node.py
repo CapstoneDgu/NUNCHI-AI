@@ -8,6 +8,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
 from core.config import get_settings
+from core.model_context import get_current_model
 from service.graph.state import KioskState
 from service.mcp_client import get_mcp_tools
 
@@ -71,7 +72,7 @@ async def run_recommend_agent(state: KioskState) -> dict:
     """추천 ReAct 에이전트를 실행하고 결과를 반환한다."""
     s = get_settings()
 
-    llm = ChatOpenAI(model=s.openai_model, api_key=s.openai_api_key, temperature=0.5)
+    llm = ChatOpenAI(model=get_current_model(s.openai_model), api_key=s.openai_api_key, temperature=0.5)
 
     tools = get_mcp_tools()
     agent = create_react_agent(llm, tools, prompt=_RECOMMEND_SYSTEM_PROMPT)

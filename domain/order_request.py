@@ -209,7 +209,7 @@ class AddCartItemRequest(BaseModel):
         }
     )
 
-    session_id: int = Field(description="주문 세션 ID", examples=[101])
-    menu_id: int = Field(description="담을 메뉴 ID", examples=[13])
+    session_id: int = Field(ge=1, description="주문 세션 ID", examples=[101])
+    menu_id: int = Field(ge=1, description="담을 메뉴 ID", examples=[13])
     quantity: int = Field(default=1, ge=1, description="수량", examples=[1])
     option_ids: list[int] = Field(default_factory=list, description="선택한 옵션 ID 목록. 없으면 빈 배열.", examples=[[]])

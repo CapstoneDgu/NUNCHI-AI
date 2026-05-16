@@ -60,6 +60,10 @@ _OPENAPI_TAGS = [
         "name": "health",
         "description": "배포 상태 확인, 모니터링, 로드밸런서 점검에 사용하는 기본 헬스 체크 API입니다.",
     },
+    {
+        "name": "cart",
+        "description": "장바구니 직접 조회/추가 API입니다. LLM을 거치지 않고 Spring 장바구니 API를 직접 호출합니다.",
+    },
 ]
 
 

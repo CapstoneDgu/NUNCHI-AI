@@ -15,6 +15,7 @@ from langchain_core.messages import HumanMessage
 
 from adapter.spring_adapter import SpringAdapter
 from core.config import get_settings
+from core.model_context import set_model_override
 from core.prefetch_cache import get_prefetch_cache
 from domain.order_request import (
     ChatOrderResponse,
@@ -133,9 +134,12 @@ class OrderService:
     async def _run_prefetch(self, session_id: int, text: str, mode: str) -> None:
         """mini 모델 그래프로 suggestion 응답을 미리 생성해 캐시에 저장한다.
 
+        asyncio 태스크는 생성 시점의 컨텍스트 복사본을 가지므로,
+        set_model_override() 호출은 이 태스크 안에서만 유효하다.
         에러가 발생해도 로그만 남기고 무시한다. 사용자 응답 흐름에 영향을 주지 않는다.
         """
         try:
+            set_model_override(get_settings().prefetch_model)
             initial_state = {
                 "messages":      [HumanMessage(content=text)],
                 "session_id":    session_id,

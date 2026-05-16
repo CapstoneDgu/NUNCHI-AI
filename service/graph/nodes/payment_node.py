@@ -8,6 +8,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
 from core.config import get_settings
+from core.model_context import get_current_model
 from service.graph.state import KioskState
 from service.mcp_client import get_mcp_tools
 
@@ -52,7 +53,7 @@ async def run_payment_agent(state: KioskState) -> dict:
     session_id = state["session_id"]
     prompt = _PAYMENT_SYSTEM_PROMPT + f"\n\n현재 세션 ID: {session_id}"
 
-    llm = ChatOpenAI(model=s.openai_model, api_key=s.openai_api_key, temperature=0)
+    llm = ChatOpenAI(model=get_current_model(s.openai_model), api_key=s.openai_api_key, temperature=0)
 
     tools = get_mcp_tools()
     agent = create_react_agent(llm, tools, prompt=prompt)

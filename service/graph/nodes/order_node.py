@@ -8,6 +8,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
 from core.config import get_settings
+from core.model_context import get_current_model
 from service.graph.state import KioskState
 from service.mcp_client import get_mcp_tools
 
@@ -99,7 +100,7 @@ tool_get_menu_detail 결과에 option_groups 가 1개 이상 있으면
 - 장바구니 조회 후 (항목 있음): ["결제할게", "메뉴 더 추가할게", "장바구니 비워줘"]
 - 장바구니 조회 후 (비어있음): ["메뉴 추천해줘", "메뉴 직접 볼게", "처음부터 다시 할게"]
 - 장바구니 수정/삭제 후: ["장바구니 확인해줘", "결제할게", "메뉴 더 추가할게"]
-- 장바구니 초기화 후: ["메뉴 추천해줘", "메뉴 직접 볼게"]
+- 장바구니 초기화 후: ["메뉴 추천해줘", "메뉴 직접 볼게", "처음부터 다시 할게"]
 
 ```json
 {
@@ -140,7 +141,7 @@ async def run_order_agent(state: KioskState) -> dict:
     tone = _AVATAR_TONE if mode == "AVATAR" else _NORMAL_TONE
     system_prompt = tone + f"현재 session_id: {session_id}\n\n" + _ORDER_SYSTEM_PROMPT
 
-    llm = ChatOpenAI(model=s.openai_model, api_key=s.openai_api_key, temperature=0.3)
+    llm = ChatOpenAI(model=get_current_model(s.openai_model), api_key=s.openai_api_key, temperature=0.3)
 
     tools = get_mcp_tools()
     agent = create_react_agent(llm, tools, prompt=system_prompt)
