@@ -10,6 +10,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from core.config import get_settings
+from core.model_context import get_current_model
 from service.graph.state import KioskState
 
 _INTENT_SYSTEM_PROMPT = """
@@ -32,7 +33,7 @@ _INTENT_SYSTEM_PROMPT = """
 def _build_llm() -> ChatOpenAI:
     s = get_settings()
     return ChatOpenAI(
-        model=s.openai_model,
+        model=get_current_model(s.openai_model),
         api_key=s.openai_api_key,
         temperature=0,
     )

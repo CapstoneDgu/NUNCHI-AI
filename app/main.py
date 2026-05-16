@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from adapter.factory import get_spring_adapter
-from app.api import order, voice
+from app.api import cart, order, voice
 from domain.api_response import ApiErrorResponse, HealthCheckResponse
 from core.exceptions import KioskError, SpringApiError
 from service.mcp_client import initialize_mcp_client
@@ -60,6 +60,10 @@ _OPENAPI_TAGS = [
         "name": "health",
         "description": "배포 상태 확인, 모니터링, 로드밸런서 점검에 사용하는 기본 헬스 체크 API입니다.",
     },
+    {
+        "name": "cart",
+        "description": "장바구니 직접 조회/추가 API입니다. LLM을 거치지 않고 Spring 장바구니 API를 직접 호출합니다.",
+    },
 ]
 
 
@@ -98,6 +102,7 @@ app.add_middleware(
 
 # 라우터 등록
 app.include_router(order.router, prefix="/ai")
+app.include_router(cart.router, prefix="/ai/api")
 app.include_router(voice.router, prefix="/ai")
 
 

@@ -16,11 +16,9 @@ from service.graph.nodes.step_node import transition_step
 from service.graph.state import KioskState
 
 
-def build_kiosk_graph():
-    """컴파일된 그래프를 반환한다."""
+def _build_graph(with_checkpointer: bool = True):
     graph = StateGraph(KioskState)
 
-    # 노드 등록
     graph.add_node("intent_classifier", classify_intent)
     graph.add_node("order_agent",        run_order_agent)
     graph.add_node("payment_agent",      run_payment_agent)
@@ -28,10 +26,8 @@ def build_kiosk_graph():
     graph.add_node("nunchi_detector",    detect_nunchi)
     graph.add_node("step_transition",    transition_step)
 
-    # 시작점
     graph.set_entry_point("intent_classifier")
 
-    # 조건부 엣지 — 의도에 따라 분기
     graph.add_conditional_edges(
         "intent_classifier",
         route_by_intent,
@@ -43,13 +39,22 @@ def build_kiosk_graph():
         },
     )
 
-    # 고정 엣지
     graph.add_edge("nunchi_detector",  "recommend_agent")
     graph.add_edge("order_agent",      "step_transition")
     graph.add_edge("recommend_agent",  "step_transition")
     graph.add_edge("step_transition",  END)
     graph.add_edge("payment_agent",    END)
 
-    # 세션별 대화 상태 자동 저장 (thread_id = session_id)
-    checkpointer = MemorySaver()
-    return graph.compile(checkpointer=checkpointer)
+    if with_checkpointer:
+        return graph.compile(checkpointer=MemorySaver())
+    return graph.compile()
+
+
+def build_kiosk_graph():
+    """메인 대화 그래프 — MemorySaver로 세션별 상태를 자동 저장한다."""
+    return _build_graph(with_checkpointer=True)
+
+
+def build_prefetch_graph():
+    """프리패치 전용 그래프 — 상태 저장 없이 매 호출을 독립적으로 실행한다."""
+    return _build_graph(with_checkpointer=False)

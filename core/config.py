@@ -21,6 +21,7 @@ class Settings(_SpringBaseSettings):
     # OpenAI
     openai_api_key: str = Field(min_length=1, alias="OPEN_API_KEY")
     openai_model: str = "gpt-4o-mini"
+    prefetch_model: str = "gpt-4o-mini"  # 퀵바 프리패치 전용 모델 — 메인 모델 업그레이드 시에도 저비용 유지
 
     # MCP 서버
     mcp_server_url: str = "http://localhost:8090"

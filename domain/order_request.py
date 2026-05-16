@@ -162,6 +162,7 @@ class ChatOrderResponse(BaseModel):
                     }
                 ],
                 "menu_options": None,
+                "suggestions": ["다른 메뉴도 추천해줘", "장바구니 확인해줘", "결제할게"],
             }
         }
     )
@@ -187,3 +188,28 @@ class ChatOrderResponse(BaseModel):
         default=None,
         description="메뉴 옵션 선택 정보. CONFIGURE 단계에서 옵션이 있는 메뉴를 선택했을 때만 포함된다. 프론트엔드 옵션 선택 UI에 사용한다.",
     )
+    suggestions: Optional[list[str]] = Field(
+        default=None,
+        description="다음 발화 추천 문구 최대 3개. 프론트엔드 퀵바 버튼 렌더링에 사용한다. 버튼 클릭 시 해당 문자열을 text로 그대로 전달한다.",
+        examples=[["다른 메뉴도 추천해줘", "장바구니 확인해줘", "결제할게"]],
+    )
+
+
+class AddCartItemRequest(BaseModel):
+    """POST /ai/api/order/cart/add 요청 — 메뉴담기 버튼 클릭 전용"""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "session_id": 101,
+                "menu_id": 13,
+                "quantity": 1,
+                "option_ids": [],
+            }
+        }
+    )
+
+    session_id: int = Field(ge=1, description="주문 세션 ID", examples=[101])
+    menu_id: int = Field(ge=1, description="담을 메뉴 ID", examples=[13])
+    quantity: int = Field(default=1, ge=1, description="수량", examples=[1])
+    option_ids: list[int] = Field(default_factory=list, description="선택한 옵션 ID 목록. 없으면 빈 배열.", examples=[[]])
