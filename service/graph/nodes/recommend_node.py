@@ -8,6 +8,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
 from core.config import get_settings
+from core.model_context import get_current_model
 from service.graph.state import KioskState
 from service.mcp_client import get_mcp_tools
 
@@ -46,6 +47,7 @@ Tool 선택 기준:
 - 반드시 아래 JSON 형식만 출력해라. 다른 텍스트, 마크다운 블록, 설명을 절대 붙이지 마라.
 - message: 아바타가 직접 읽어줄 짧은 안내 멘트 (1~2문장). 메뉴명·가격·파는 곳 같은 상세 정보는 넣지 마라.
 - recommendations: Tool에서 조회한 실제 값만 채워라. 없는 필드는 null로 둬라.
+- suggestions: 사용자가 다음에 할 법한 발화 3개. recommendations가 있으면 반드시 마지막 항목을 "다른 메뉴도 추천해줘"로 고정하고 나머지 2개는 탐색/장바구니 관련 문구를 넣어라. ("장바구니 확인해줘", "조건 바꿔서 추천해줘" 등)
 
 출력 형식:
 {
@@ -60,7 +62,8 @@ Tool 선택 기준:
       "floor": 1,
       "quantity_sold": 50
     }
-  ]
+  ],
+  "suggestions": ["장바구니 확인해줘", "매운 거 빼고 다시 추천해줘", "다른 메뉴도 추천해줘"]
 }
 """.strip()
 
@@ -69,7 +72,7 @@ async def run_recommend_agent(state: KioskState) -> dict:
     """추천 ReAct 에이전트를 실행하고 결과를 반환한다."""
     s = get_settings()
 
-    llm = ChatOpenAI(model=s.openai_model, api_key=s.openai_api_key, temperature=0.5)
+    llm = ChatOpenAI(model=get_current_model(s.openai_model), api_key=s.openai_api_key, temperature=0.5)
 
     tools = get_mcp_tools()
     agent = create_react_agent(llm, tools, prompt=_RECOMMEND_SYSTEM_PROMPT)
