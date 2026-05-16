@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from adapter.factory import get_spring_adapter
-from app.api import order, voice
+from app.api import cart, order, voice
 from domain.api_response import ApiErrorResponse, HealthCheckResponse
 from core.exceptions import KioskError, SpringApiError
 from service.mcp_client import initialize_mcp_client
@@ -98,6 +98,7 @@ app.add_middleware(
 
 # 라우터 등록
 app.include_router(order.router, prefix="/ai")
+app.include_router(cart.router, prefix="/ai/api")
 app.include_router(voice.router, prefix="/ai")
 
 
