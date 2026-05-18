@@ -9,6 +9,7 @@ thread_id = session_id 로 LangGraph Checkpointer가 세션별 대화 상태를 
 import asyncio
 import json
 import logging
+import re
 from typing import Optional
 
 from langchain_core.messages import HumanMessage
@@ -183,6 +184,20 @@ def _is_prefetchable(text: str) -> bool:
     return not any(kw in text for kw in _NO_PREFETCH_KEYWORDS)
 
 
+def _strip_markdown(text: str) -> str:
+    """마크다운 서식을 제거하고 순수 텍스트를 반환한다."""
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text, flags=re.DOTALL)
+    text = re.sub(r'\*(.+?)\*', r'\1', text, flags=re.DOTALL)
+    text = re.sub(r'__(.+?)__', r'\1', text, flags=re.DOTALL)
+    text = re.sub(r'_(.+?)_', r'\1', text, flags=re.DOTALL)
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r'`{3}.*?`{3}', '', text, flags=re.DOTALL)
+    text = re.sub(r'`(.+?)`', r'\1', text)
+    text = re.sub(r'\[(.+?)\]\(.+?\)', r'\1', text)
+    text = re.sub(r'^>\s+', '', text, flags=re.MULTILINE)
+    return text.strip()
+
+
 def _extract_json_block(raw: str) -> Optional[str]:
     """응답 문자열에서 JSON 블록을 추출한다.
 
@@ -222,10 +237,10 @@ def _parse_agent_reply(
     try:
         json_str = _extract_json_block(raw)
         if json_str is None:
-            return raw, None, None, None
+            return _strip_markdown(raw), None, None, None
         data = json.loads(json_str)
 
-        reply = data.get("reply") or data.get("message") or raw
+        reply = _strip_markdown(data.get("reply") or data.get("message") or raw)
         recommendations: Optional[list[RecommendedMenu]] = None
         menu_options: Optional[MenuOptionsResponse] = None
         suggestions: Optional[list[str]] = None
@@ -257,4 +272,4 @@ def _parse_agent_reply(
         return reply, recommendations, menu_options, suggestions
     except Exception:
         logging.debug("[에이전트 응답 파싱 스킵] JSON 아님 — 원본 텍스트 반환")
-        return raw, None, None, None
+        return _strip_markdown(raw), None, None, None
