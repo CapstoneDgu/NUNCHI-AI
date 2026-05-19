@@ -109,10 +109,18 @@ tool_get_menu_detail 결과에 option_groups 가 1개 이상 있으면
 - 장바구니 수정/삭제 후: ["장바구니 확인해줘", "결제할게", "메뉴 더 추가할게"]
 - 장바구니 초기화 후: ["메뉴 추천해줘", "메뉴 직접 볼게", "처음부터 다시 할게"]
 
+화면 액션(action) 규칙 — 명확한 화면 의도가 있을 때만 사용:
+- 사용자가 "장바구니 보여줘/장바구니 확인" 발화하면: {"type": "navigate", "page": "/summary"}
+- 사용자가 "결제할게/주문 확인 완료" 발화하면: {"type": "navigate", "page": "/summary"}
+- 사용자가 특정 메뉴 상세를 묻는 경우(예: "치즈라면 자세히 보여줘"): {"type": "open_menu_detail", "menu_id": <ID>}
+- 사용자가 특정 층/식당을 명시하면: {"type": "select_floor", "floor": N} 또는 {"type": "select_restaurant", "name": "..."}
+- 단순 담기/수정/조회는 action 을 null 로 둔다 (화면 전환 불필요).
+
 ```json
 {
   "reply": "<응답 텍스트>",
-  "suggestions": ["<다음 발화 1>", "<다음 발화 2>", "<다음 발화 3>"]
+  "suggestions": ["<다음 발화 1>", "<다음 발화 2>", "<다음 발화 3>"],
+  "action": null
 }
 ```
 

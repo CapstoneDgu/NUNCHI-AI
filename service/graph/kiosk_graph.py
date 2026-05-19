@@ -7,6 +7,7 @@ OrderService가 이 그래프를 ainvoke()로 실행한다.
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
+from service.graph.nodes.clarify_node import run_clarify_node
 from service.graph.nodes.intent_node import classify_intent, route_by_intent
 from service.graph.nodes.nunchi_node import detect_nunchi
 from service.graph.nodes.order_node import run_order_agent
@@ -26,6 +27,7 @@ def _build_graph(with_checkpointer: bool = True):
     graph.add_node("payment_agent",      run_payment_agent)
     graph.add_node("recommend_agent",    run_recommend_agent)
     graph.add_node("nunchi_detector",    detect_nunchi)
+    graph.add_node("clarify_responder",  run_clarify_node)
     graph.add_node("step_transition",    transition_step)
 
     # ainvoke()호출 시 항상 여기서 시작
@@ -41,15 +43,17 @@ def _build_graph(with_checkpointer: bool = True):
             "payment":    "payment_agent",
             "recommend":  "recommend_agent",
             "hesitation": "nunchi_detector",
+            "clarify":    "clarify_responder",   # OOD/인사/모호 발화
         },
     )
 
     # 고정 경로 설계
-    graph.add_edge("nunchi_detector",  "recommend_agent")
-    graph.add_edge("order_agent",      "step_transition")
-    graph.add_edge("recommend_agent",  "step_transition")
-    graph.add_edge("step_transition",  END)
-    graph.add_edge("payment_agent",    END)
+    graph.add_edge("nunchi_detector",   "recommend_agent")
+    graph.add_edge("order_agent",       "step_transition")
+    graph.add_edge("recommend_agent",   "step_transition")
+    graph.add_edge("clarify_responder", END)
+    graph.add_edge("step_transition",   END)
+    graph.add_edge("payment_agent",     END)
 
     if with_checkpointer:
         return graph.compile(checkpointer=MemorySaver())

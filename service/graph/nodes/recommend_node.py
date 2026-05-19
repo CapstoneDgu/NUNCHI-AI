@@ -50,6 +50,13 @@ Tool 선택 기준:
 - recommendations: Tool에서 조회한 실제 값만 채워라. 없는 필드는 null로 둬라.
 - suggestions: 사용자가 다음에 할 법한 발화 3개. recommendations가 있으면 반드시 마지막 항목을 "다른 메뉴도 추천해줘"로 고정하고 나머지 2개는 탐색/장바구니 관련 문구를 넣어라. ("장바구니 확인해줘", "조건 바꿔서 추천해줘" 등)
 
+화면 액션(action) 규칙:
+- recommendations 가 1개 이상이면 첫 메뉴를 강조한다: {"type": "highlight_menu", "menu_id": <첫 추천 메뉴 ID>}
+- 사용자 발화가 특정 층("1층/2층/3층 메뉴") 을 명시하면: {"type": "select_floor", "floor": 1}
+- 사용자 발화가 특정 식당명("솥앤누들/분식당" 등) 을 명시하면: {"type": "select_restaurant", "name": "솥앤누들"}
+- 위 셋이 동시에 해당하면 highlight_menu 를 우선한다.
+- recommendations 가 없거나 명확한 화면 의도가 없으면 action 은 null.
+
 출력 형식:
 {
   "message": "오늘 인기 메뉴를 추천해 드릴게요!",
@@ -64,7 +71,8 @@ Tool 선택 기준:
       "quantity_sold": 50
     }
   ],
-  "suggestions": ["장바구니 확인해줘", "매운 거 빼고 다시 추천해줘", "다른 메뉴도 추천해줘"]
+  "suggestions": ["장바구니 확인해줘", "매운 거 빼고 다시 추천해줘", "다른 메뉴도 추천해줘"],
+  "action": {"type": "highlight_menu", "menu_id": 13}
 }
 """.strip()
 
