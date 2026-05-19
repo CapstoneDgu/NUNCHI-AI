@@ -101,9 +101,11 @@ class OrderService:
             raise RuntimeError("그래프 실행 결과에 메시지가 없습니다")
         raw = messages[-1].content
 
-        # JSON 응답 파싱 (추천 / 옵션 / 퀵바 suggestions)
-        reply, recommendations, menu_options, suggestions = _parse_agent_reply(raw)
+        # JSON 응답 파싱 (추천 / 옵션 / 퀵바 suggestions / 화면 액션)
+        reply, recommendations, menu_options, suggestions, parsed_action = _parse_agent_reply(raw)
         current_step = result.get("current_step")
+        # 노드가 명시적으로 채운 action 우선, 없으면 LLM 응답 JSON 의 action 사용
+        action = result.get("action") or parsed_action
 
         # 3. AI 응답 저장
         await save_message(self._spring, session_id, "ASSISTANT", reply)
@@ -115,6 +117,7 @@ class OrderService:
             recommendations=recommendations,
             menu_options=menu_options,
             suggestions=suggestions,
+            action=action,
         )
 
         # 4. suggestions가 있으면 백그라운드 프리패치 스케줄링
@@ -163,8 +166,9 @@ class OrderService:
 
             raw = messages[-1].content
             # 결과 파싱
-            reply, recommendations, menu_options, suggestions = _parse_agent_reply(raw)
+            reply, recommendations, menu_options, suggestions, parsed_action = _parse_agent_reply(raw)
             current_step = result.get("current_step")
+            action = result.get("action") or parsed_action
 
             response = ChatOrderResponse(
                 session_id=session_id,
@@ -173,6 +177,7 @@ class OrderService:
                 recommendations=recommendations,
                 menu_options=menu_options,
                 suggestions=suggestions,
+                action=action,
             )
 
             # 캐시에 저장
@@ -240,25 +245,38 @@ def _extract_json_block(raw: str) -> Optional[str]:
 
 def _parse_agent_reply(
     raw: str,
-) -> tuple[str, Optional[list[RecommendedMenu]], Optional[MenuOptionsResponse], Optional[list[str]]]:
+) -> tuple[
+    str,
+    Optional[list[RecommendedMenu]],
+    Optional[MenuOptionsResponse],
+    Optional[list[str]],
+    Optional[dict],
+]:
     """에이전트 JSON 응답을 파싱한다.
 
     지원 키:
     - recommendations → 추천 메뉴 카드 목록
     - menu_options     → 옵션 선택 구조화 응답
     - suggestions      → 퀵바 다음 발화 추천 문구 목록
+    - action           → 프론트가 받아 화면을 컨트롤하는 단일 명령
+                         (navigate / select_floor / highlight_menu /
+                          open_menu_detail / close_overlay /
+                          select_payment_method / select_restaurant)
     JSON 블록이 없거나 지원 키가 없으면 원본 텍스트를 그대로 반환한다.
     """
+    from service.graph.ui_actions import validate as validate_action
+
     try:
         json_str = _extract_json_block(raw)
         if json_str is None:
-            return _strip_markdown(raw), None, None, None
+            return _strip_markdown(raw), None, None, None, None
         data = json.loads(json_str)
 
         reply = _strip_markdown(data.get("reply") or data.get("message") or raw)
         recommendations: Optional[list[RecommendedMenu]] = None
         menu_options: Optional[MenuOptionsResponse] = None
         suggestions: Optional[list[str]] = None
+        action: Optional[dict] = None
 
         if "recommendations" in data:
             recommendations = [RecommendedMenu(**item) for item in data["recommendations"]]
@@ -284,7 +302,11 @@ def _parse_agent_reply(
         if isinstance(raw_suggestions, list):
             suggestions = [s for s in raw_suggestions if isinstance(s, str)][:3] or None
 
-        return reply, recommendations, menu_options, suggestions
+        # action 검증 — 잘못된 타입/페이로드는 None 으로 폐기 (서비스 흐름 안전)
+        if "action" in data:
+            action = validate_action(data["action"])
+
+        return reply, recommendations, menu_options, suggestions, action
     except Exception:
         logging.debug("[에이전트 응답 파싱 스킵] JSON 아님 — 원본 텍스트 반환")
-        return _strip_markdown(raw), None, None, None
+        return _strip_markdown(raw), None, None, None, None

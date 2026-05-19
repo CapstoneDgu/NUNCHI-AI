@@ -38,11 +38,21 @@ _PAYMENT_SYSTEM_PROMPT = """
 - 결제 진행 중 오류 발생: ["다시 시도할게", "다른 결제 수단으로 할게", "취소할게"]
 - 결제 완료: null
 
+화면 액션(action) 규칙 — 사용자가 명확히 결제 단계로 진입할 때만 사용:
+- 결제 수단 선택 단계 진입 시: {"type": "navigate", "page": "/payment"}
+- 사용자가 "IC카드/카드/신용카드" 선택 시: {"type": "select_payment_method", "method": "ic"}
+- 사용자가 "정맥/정맥인증" 선택 시: {"type": "select_payment_method", "method": "vein"}
+- 사용자가 "카카오페이/카카오바코드/바코드" 선택 시: {"type": "select_payment_method", "method": "barcode"}
+- 결제 완료 후: {"type": "navigate", "page": "/complete"}
+- 결제 실패 시: {"type": "navigate", "page": "/fail"}
+- 사용자가 단순 정보만 묻거나 의도가 모호하면 action 은 null.
+
 출력 형식:
 ```json
 {
   "reply": "<응답 텍스트>",
-  "suggestions": ["<다음 발화 1>", "<다음 발화 2>", "<다음 발화 3>"]
+  "suggestions": ["<다음 발화 1>", "<다음 발화 2>", "<다음 발화 3>"],
+  "action": null
 }
 ```
 """.strip()
