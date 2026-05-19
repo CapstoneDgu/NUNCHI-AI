@@ -8,16 +8,10 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    outputs:
-      image-tag: ${{ steps.set-tag.outputs.tag }}
 
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
-
-      - name: Set image tag
-        id: set-tag
-        run: echo "tag=${{ github.sha }}" >> $GITHUB_OUTPUT
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -51,44 +45,3 @@ jobs:
               docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
             docker compose pull fastapi mcp
             docker compose up -d --no-deps fastapi mcp
-
-  notify-discord:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    if: always()
-
-    steps:
-      - name: 배포 결과 디스코드 알림 전송
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          STATUS: ${{ needs.build-and-push.result }}
-          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
-          AUTHOR: ${{ github.actor }}
-          IMAGE_TAG: ${{ needs.build-and-push.outputs.image-tag }}
-        run: |
-          if [ "$STATUS" = "success" ]; then
-            message="✅ 배포 성공"
-            color=3066993
-          else
-            message="❌ 배포 실패"
-            color=15158332
-          fi
-
-          payload=$(jq -n \
-            --arg title "🚀 AI 서버 배포 알림" \
-            --arg desc "**커밋 메시지**: $COMMIT_MESSAGE\n**작성자**: $AUTHOR\n**결과**: $message" \
-            --argjson color "$color" \
-            --arg link "https://github.com/${{ github.repository }}/commit/$IMAGE_TAG" \
-            --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            '{embeds:[{title:$title,description:$desc,color:$color,fields:[
-              {name:"🏷️ 이미지 태그",value:"`latest`",inline:true},
-              {name:"🌿 브랜치",value:"main",inline:true},
-              {name:"🔗 커밋 링크",value:("[확인하기]("+$link+")")}
-            ],timestamp:$ts}]}')
-
-          curl -H "Content-Type: application/json" \
-             -X POST \
-             -d "$payload" \
-             "$DISCORD_WEBHOOK"
-
-          echo "📢 디스코드 알림 전송 완료"
