@@ -74,33 +74,17 @@ jobs:
             color=15158332
           fi
 
-          payload=$(cat <<EOF
-          {
-            "embeds": [{
-              "title": "🚀 AI 서버 배포 알림",
-              "description": "**커밋 메시지**: $COMMIT_MESSAGE\n**작성자**: $AUTHOR\n**결과**: ${message}",
-              "color": ${color},
-              "fields": [
-                {
-                  "name": "🏷️ 이미지 태그",
-                  "value": "\`latest\`",
-                  "inline": true
-                },
-                {
-                  "name": "🌿 브랜치",
-                  "value": "main",
-                  "inline": true
-                },
-                {
-                  "name": "🔗 커밋 링크",
-                  "value": "[확인하기](https://github.com/${{ github.repository }}/commit/$IMAGE_TAG)"
-                }
-              ],
-              "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            }]
-          }
-          EOF
-          )
+          payload=$(jq -n \
+            --arg title "🚀 AI 서버 배포 알림" \
+            --arg desc "**커밋 메시지**: $COMMIT_MESSAGE\n**작성자**: $AUTHOR\n**결과**: $message" \
+            --argjson color "$color" \
+            --arg link "https://github.com/${{ github.repository }}/commit/$IMAGE_TAG" \
+            --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{embeds:[{title:$title,description:$desc,color:$color,fields:[
+              {name:"🏷️ 이미지 태그",value:"`latest`",inline:true},
+              {name:"🌿 브랜치",value:"main",inline:true},
+              {name:"🔗 커밋 링크",value:("[확인하기]("+$link+")")}
+            ],timestamp:$ts}]}')
 
           curl -H "Content-Type: application/json" \
              -X POST \
