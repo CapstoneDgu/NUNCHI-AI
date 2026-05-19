@@ -136,16 +136,19 @@ _NORMAL_TONE = (
 async def run_order_agent(state: KioskState) -> dict:
     """주문/장바구니 ReAct 에이전트를 실행하고 결과를 반환한다."""
     s = get_settings()
-    session_id = state["session_id"]
-    mode = state.get("mode", "NORMAL")
+    session_id = state["session_id"] # state 에서 세션id 꺼내기
+    mode = state.get("mode", "NORMAL") # state에서 mode 꺼내기 
 
+    # 말투 설정
     tone = _AVATAR_TONE if mode == "AVATAR" else _NORMAL_TONE
     system_prompt = tone + f"현재 session_id: {session_id}\n\n" + _ORDER_SYSTEM_PROMPT
 
+    # GPT + MCP Tool 묶어서 에이전트 생성
     llm = ChatOpenAI(model=get_current_model(s.openai_model), api_key=s.openai_api_key, temperature=0.3)
-
     tools = get_mcp_tools()
     agent = create_react_agent(llm, tools, prompt=system_prompt)
+
+    # 에이전트 실행
     result = await agent.ainvoke({"messages": state["messages"]})
 
     return {"messages": result["messages"]}

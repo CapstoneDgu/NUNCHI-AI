@@ -35,18 +35,18 @@ _GREETING_PROMPT = "안녕하세요! 무엇을 도와드릴까요? 메뉴를 추
 
 class OrderService:
     def __init__(self, spring: SpringAdapter) -> None:
-        self._spring = spring
-        self._graph = build_kiosk_graph()
-        self._prefetch_graph = build_prefetch_graph()
+        self._spring = spring # Spring 통신 객체 저장
+        self._graph = build_kiosk_graph() # 메인 LangGraph 그래프 생성
+        self._prefetch_graph = build_prefetch_graph() # 프리패치용 그래프 생성
 
     async def start(
-        self,
-        mode: SessionMode = SessionMode.avatar,
-        language: str = "ko",
-        order_type: OrderType = OrderType.dine_in,
+        self, # OrderService 인스턴스 자신
+        mode: SessionMode = SessionMode.avatar, # body.mode에서 넘어온 값
+        language: str = "ko", # body.language
+        order_type: OrderType = OrderType.dine_in, # body.order_type
     ) -> StartOrderResponse:
         """Spring 세션을 생성하고 첫 인사 메시지를 반환한다."""
-        session = await create_session(self._spring, mode, language, order_type)
+        session = await create_session(self._spring, mode, language, order_type) # await이므로 이 작업을 기다린 후 다음 return 시작
 
         # 첫 인사 — LLM 호출 없이 고정 메시지로 빠르게 응답
         return StartOrderResponse(
@@ -81,6 +81,8 @@ class OrderService:
         # session_id와 messages, nunchi_signal만 넘긴다.
         # order_id / payment_id / intent 등은 그래프 노드가 관리하며
         # 매 요청마다 None으로 덮어쓰면 이전 턴에서 저장된 값이 초기화된다.
+
+        # 랭그래프에 넘겨주는 초기 입력값
         initial_state = {
             "messages":      [HumanMessage(content=text)],
             "session_id":    session_id,
@@ -88,6 +90,7 @@ class OrderService:
             "nunchi_signal": nunchi_signal,
         }
 
+        # ainvoke는 그래프를 실행시키는 함수
         result = await self._graph.ainvoke(
             initial_state,
             config={"configurable": {"thread_id": str(session_id)}},
@@ -125,9 +128,10 @@ class OrderService:
 
         실시간 상태에 의존하는 항목(장바구니·결제·주문 변경)은 캐싱해도 stale해지므로 건너뛴다.
         """
+        # suggest를 하나씩 돌면서
         for text in suggestions:
-            if _is_prefetchable(text):
-                asyncio.create_task(
+            if _is_prefetchable(text): # 프리패치 해도 되는 것만
+                asyncio.create_task( # 백그라운드 태스크로 던지기
                     self._run_prefetch(session_id, text, mode),
                     name=f"prefetch-{session_id}",
                 )
@@ -141,6 +145,8 @@ class OrderService:
         """
         try:
             set_model_override(get_settings().prefetch_model)
+
+            # 그래프에 넘길 초기 상태
             initial_state = {
                 "messages":      [HumanMessage(content=text)],
                 "session_id":    session_id,
@@ -148,6 +154,7 @@ class OrderService:
                 "nunchi_signal": None,
             }
 
+            # 프리패치 전용 그래프 실행
             result = await self._prefetch_graph.ainvoke(initial_state)
 
             messages = result.get("messages") or []
@@ -155,6 +162,7 @@ class OrderService:
                 return
 
             raw = messages[-1].content
+            # 결과 파싱
             reply, recommendations, menu_options, suggestions = _parse_agent_reply(raw)
             current_step = result.get("current_step")
 
@@ -166,6 +174,8 @@ class OrderService:
                 menu_options=menu_options,
                 suggestions=suggestions,
             )
+
+            # 캐시에 저장
             get_prefetch_cache().set(session_id, text, response)
             logging.debug("[프리패치 완료] session=%d text=%r", session_id, text)
         except Exception as exc:
