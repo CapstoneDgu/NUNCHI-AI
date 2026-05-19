@@ -29,6 +29,7 @@ _PAYMENT_SYSTEM_PROMPT = """
 - 결제 수단을 사용자에게 먼저 확인하고 진행해라.
 - 모든 Tool 호출 시 session_id 파라미터를 반드시 포함해라.
 - 결제 정보(카드번호 등 민감 정보)는 절대 로그나 응답에 포함하지 마라.
+- reply 텍스트에 마크다운 서식(**, *, #, `, _ 등)을 절대 사용하지 마라. 순수 텍스트로만 작성해라.
 - 응답은 반드시 아래 JSON 형식으로 출력해라. 다른 텍스트는 붙이지 마라.
 - 결제 완료 후에는 suggestions를 null로 둬라.
 
@@ -59,4 +60,4 @@ async def run_payment_agent(state: KioskState) -> dict:
     agent = create_react_agent(llm, tools, prompt=prompt)
     result = await agent.ainvoke({"messages": state["messages"]})
 
-    return {"messages": result["messages"]}
+    return {"messages": result["messages"], "current_step": "CHECKOUT"}
