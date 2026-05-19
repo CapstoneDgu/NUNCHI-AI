@@ -19,19 +19,23 @@ if TYPE_CHECKING:
     from service.graph.state import KioskState
 
 _STEP_SYSTEM_PROMPT = """
-현재 단계와 사용자 발화를 보고 다음 단계를 결정해라.
+현재 단계, 사용자 발화, AI 응답을 보고 다음 단계를 결정해라.
 
 단계 정의:
-- BROWSE    : 큰 카테고리 결정 전 (무엇을 먹을지 아직 모름)
-- SELECT    : 카테고리는 정해졌지만 메뉴 미정
+- BROWSE    : 메뉴를 추가로 탐색 중 (담은 뒤 더 볼 것이 있을 때)
+- SELECT    : 카테고리는 정해졌지만 메뉴 미정 (처음 탐색 시작)
 - CONFIGURE : 메뉴는 정해졌고 수량/옵션 결정 중
 - CHECKOUT  : 담기가 끝나고 결제로 가야 할 때
 
-결정 규칙:
-- 사용자가 메뉴+수량+결제 의사를 한 번에 말하면 → CHECKOUT
-- 장바구니 담고 "더 없어요"라고 하면 → CHECKOUT
-- 추가 주문이 생기면 → BROWSE
-- 결제가 완료되면 → null (세션 종료)
+결정 규칙 (우선순위 순):
+1. AI 응답에 "더 시키실 메뉴" 또는 "추가로 시키실" 문구가 있으면 → BROWSE
+2. AI 응답에 "결제로 넘어가" 또는 "결제를 진행" 문구가 있으면 → CHECKOUT
+3. 사용자가 메뉴+수량+결제 의사를 한 발화에 모두 말하면 → CHECKOUT
+4. 사용자가 "없어요", "됐어요", "그게 다야", "아니요" 처럼 추가 없음을 말하면 → CHECKOUT
+5. AI 응답에 옵션 선택을 요청하는 내용이 있으면 → CONFIGURE
+6. AI 응답에 메뉴를 장바구니에 담았다는 내용이 있으면 → BROWSE
+7. AI 응답에 특정 카테고리 내 메뉴 목록을 나열하거나 "골라보세요", "어떤 메뉴로 드릴까요?" 문구가 있으면 → SELECT
+8. 그 외 → BROWSE
 
 다음 단계 enum 값 하나만 출력해라. 반드시 아래 중 하나:
 BROWSE / SELECT / CONFIGURE / CHECKOUT / null
@@ -48,14 +52,28 @@ async def transition_step(state: "KioskState") -> dict:
     session_id = state.get("session_id")
 
     last_user_msg = ""
+    last_ai_msg = ""
     for msg in reversed(messages):
-        if hasattr(msg, "type") and msg.type == "human":
+        if not last_ai_msg and hasattr(msg, "type") and msg.type == "ai":
+            content = msg.content
+            try:
+                import json as _json
+                import re as _re
+                m = _re.search(r'\{.*\}', content, _re.DOTALL)
+                if m:
+                    data = _json.loads(m.group())
+                    content = data.get("reply") or data.get("message") or content
+            except Exception:
+                pass
+            last_ai_msg = content[:300]
+        if not last_user_msg and hasattr(msg, "type") and msg.type == "human":
             last_user_msg = msg.content
+        if last_user_msg and last_ai_msg:
             break
 
     response = await llm.ainvoke([
         {"role": "system", "content": _STEP_SYSTEM_PROMPT},
-        {"role": "user", "content": f"현재 단계: {current_step}\n사용자 발화: {last_user_msg}"},
+        {"role": "user", "content": f"현재 단계: {current_step}\n사용자 발화: {last_user_msg}\nAI 응답: {last_ai_msg}"},
     ])
 
     _VALID_STEPS = {"BROWSE", "SELECT", "CONFIGURE", "CHECKOUT"}
