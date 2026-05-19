@@ -196,15 +196,20 @@ def _is_prefetchable(text: str) -> bool:
 
 def _strip_markdown(text: str) -> str:
     """마크다운 서식을 제거하고 순수 텍스트를 반환한다."""
+    text = re.sub(r'```(?:\w+)?\n?(.*?)```', r'\1', text, flags=re.DOTALL)
+    text = re.sub(r'\*\*\*(.+?)\*\*\*', r'\1', text, flags=re.DOTALL)
     text = re.sub(r'\*\*(.+?)\*\*', r'\1', text, flags=re.DOTALL)
     text = re.sub(r'\*(.+?)\*', r'\1', text, flags=re.DOTALL)
+    text = re.sub(r'___(.+?)___', r'\1', text, flags=re.DOTALL)
     text = re.sub(r'__(.+?)__', r'\1', text, flags=re.DOTALL)
     text = re.sub(r'_(.+?)_', r'\1', text, flags=re.DOTALL)
     text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
-    text = re.sub(r'```(?:\w+)?\n?(.*?)```', r'\1', text, flags=re.DOTALL)
     text = re.sub(r'`(.+?)`', r'\1', text)
     text = re.sub(r'\[(.+?)\]\(.+?\)', r'\1', text)
     text = re.sub(r'^>\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^\d+\.\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^[\-\*\+]\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^[-*_]{3,}\s*$', '', text, flags=re.MULTILINE)
     return text.strip()
 
 
