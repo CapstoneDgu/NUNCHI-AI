@@ -278,10 +278,11 @@ def _parse_agent_reply(
         suggestions: Optional[list[str]] = None
         action: Optional[dict] = None
 
-        if "recommendations" in data:
+        # 값이 null 이면 키가 있어도 건너뛴다 (null 순회/인덱싱 시 예외 → 원본 JSON 노출 버그 방지)
+        if data.get("recommendations"):
             recommendations = [RecommendedMenu(**item) for item in data["recommendations"]]
 
-        if "menu_options" in data:
+        if data.get("menu_options"):
             mo = data["menu_options"]
             menu_options = MenuOptionsResponse(
                 menu_id=mo["menu_id"],
@@ -303,7 +304,7 @@ def _parse_agent_reply(
             suggestions = [s for s in raw_suggestions if isinstance(s, str)][:3] or None
 
         # action 검증 — 잘못된 타입/페이로드는 None 으로 폐기 (서비스 흐름 안전)
-        if "action" in data:
+        if data.get("action"):
             action = validate_action(data["action"])
 
         return reply, recommendations, menu_options, suggestions, action
