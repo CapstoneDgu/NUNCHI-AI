@@ -35,18 +35,18 @@ _GREETING_PROMPT = "안녕하세요! 무엇을 도와드릴까요? 메뉴를 추
 
 class OrderService:
     def __init__(self, spring: SpringAdapter) -> None:
-        self._spring = spring
-        self._graph = build_kiosk_graph()
-        self._prefetch_graph = build_prefetch_graph()
+        self._spring = spring # Spring 통신 객체 저장
+        self._graph = build_kiosk_graph() # 메인 LangGraph 그래프 생성
+        self._prefetch_graph = build_prefetch_graph() # 프리패치용 그래프 생성
 
     async def start(
-        self,
-        mode: SessionMode = SessionMode.avatar,
-        language: str = "ko",
-        order_type: OrderType = OrderType.dine_in,
+        self, # OrderService 인스턴스 자신
+        mode: SessionMode = SessionMode.avatar, # body.mode에서 넘어온 값
+        language: str = "ko", # body.language
+        order_type: OrderType = OrderType.dine_in, # body.order_type
     ) -> StartOrderResponse:
         """Spring 세션을 생성하고 첫 인사 메시지를 반환한다."""
-        session = await create_session(self._spring, mode, language, order_type)
+        session = await create_session(self._spring, mode, language, order_type) # await이므로 이 작업을 기다린 후 다음 return 시작
 
         # 첫 인사 — LLM 호출 없이 고정 메시지로 빠르게 응답
         return StartOrderResponse(
@@ -81,6 +81,8 @@ class OrderService:
         # session_id와 messages, nunchi_signal만 넘긴다.
         # order_id / payment_id / intent 등은 그래프 노드가 관리하며
         # 매 요청마다 None으로 덮어쓰면 이전 턴에서 저장된 값이 초기화된다.
+
+        # 랭그래프에 넘겨주는 초기 입력값
         initial_state = {
             "messages":      [HumanMessage(content=text)],
             "session_id":    session_id,
@@ -88,6 +90,7 @@ class OrderService:
             "nunchi_signal": nunchi_signal,
         }
 
+        # ainvoke는 그래프를 실행시키는 함수
         result = await self._graph.ainvoke(
             initial_state,
             config={"configurable": {"thread_id": str(session_id)}},
@@ -98,9 +101,11 @@ class OrderService:
             raise RuntimeError("그래프 실행 결과에 메시지가 없습니다")
         raw = messages[-1].content
 
-        # JSON 응답 파싱 (추천 / 옵션 / 퀵바 suggestions)
-        reply, recommendations, menu_options, suggestions = _parse_agent_reply(raw)
+        # JSON 응답 파싱 (추천 / 옵션 / 퀵바 suggestions / 화면 액션)
+        reply, recommendations, menu_options, suggestions, parsed_action = _parse_agent_reply(raw)
         current_step = result.get("current_step")
+        # 노드가 명시적으로 채운 action 우선, 없으면 LLM 응답 JSON 의 action 사용
+        action = result.get("action") or parsed_action
 
         # 3. AI 응답 저장
         await save_message(self._spring, session_id, "ASSISTANT", reply)
@@ -112,6 +117,7 @@ class OrderService:
             recommendations=recommendations,
             menu_options=menu_options,
             suggestions=suggestions,
+            action=action,
         )
 
         # 4. suggestions가 있으면 백그라운드 프리패치 스케줄링
@@ -125,9 +131,10 @@ class OrderService:
 
         실시간 상태에 의존하는 항목(장바구니·결제·주문 변경)은 캐싱해도 stale해지므로 건너뛴다.
         """
+        # suggest를 하나씩 돌면서
         for text in suggestions:
-            if _is_prefetchable(text):
-                asyncio.create_task(
+            if _is_prefetchable(text): # 프리패치 해도 되는 것만
+                asyncio.create_task( # 백그라운드 태스크로 던지기
                     self._run_prefetch(session_id, text, mode),
                     name=f"prefetch-{session_id}",
                 )
@@ -141,6 +148,8 @@ class OrderService:
         """
         try:
             set_model_override(get_settings().prefetch_model)
+
+            # 그래프에 넘길 초기 상태
             initial_state = {
                 "messages":      [HumanMessage(content=text)],
                 "session_id":    session_id,
@@ -148,6 +157,7 @@ class OrderService:
                 "nunchi_signal": None,
             }
 
+            # 프리패치 전용 그래프 실행
             result = await self._prefetch_graph.ainvoke(initial_state)
 
             messages = result.get("messages") or []
@@ -155,8 +165,10 @@ class OrderService:
                 return
 
             raw = messages[-1].content
-            reply, recommendations, menu_options, suggestions = _parse_agent_reply(raw)
+            # 결과 파싱
+            reply, recommendations, menu_options, suggestions, parsed_action = _parse_agent_reply(raw)
             current_step = result.get("current_step")
+            action = result.get("action") or parsed_action
 
             response = ChatOrderResponse(
                 session_id=session_id,
@@ -165,7 +177,10 @@ class OrderService:
                 recommendations=recommendations,
                 menu_options=menu_options,
                 suggestions=suggestions,
+                action=action,
             )
+
+            # 캐시에 저장
             get_prefetch_cache().set(session_id, text, response)
             logging.debug("[프리패치 완료] session=%d text=%r", session_id, text)
         except Exception as exc:
@@ -186,15 +201,20 @@ def _is_prefetchable(text: str) -> bool:
 
 def _strip_markdown(text: str) -> str:
     """마크다운 서식을 제거하고 순수 텍스트를 반환한다."""
+    text = re.sub(r'```(?:\w+)?\n?(.*?)```', r'\1', text, flags=re.DOTALL)
+    text = re.sub(r'\*\*\*(.+?)\*\*\*', r'\1', text, flags=re.DOTALL)
     text = re.sub(r'\*\*(.+?)\*\*', r'\1', text, flags=re.DOTALL)
     text = re.sub(r'\*(.+?)\*', r'\1', text, flags=re.DOTALL)
+    text = re.sub(r'___(.+?)___', r'\1', text, flags=re.DOTALL)
     text = re.sub(r'__(.+?)__', r'\1', text, flags=re.DOTALL)
     text = re.sub(r'_(.+?)_', r'\1', text, flags=re.DOTALL)
     text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
-    text = re.sub(r'```(?:\w+)?\n?(.*?)```', r'\1', text, flags=re.DOTALL)
     text = re.sub(r'`(.+?)`', r'\1', text)
     text = re.sub(r'\[(.+?)\]\(.+?\)', r'\1', text)
     text = re.sub(r'^>\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^\d+\.\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^[\-\*\+]\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^[-*_]{3,}\s*$', '', text, flags=re.MULTILINE)
     return text.strip()
 
 
@@ -225,30 +245,44 @@ def _extract_json_block(raw: str) -> Optional[str]:
 
 def _parse_agent_reply(
     raw: str,
-) -> tuple[str, Optional[list[RecommendedMenu]], Optional[MenuOptionsResponse], Optional[list[str]]]:
+) -> tuple[
+    str,
+    Optional[list[RecommendedMenu]],
+    Optional[MenuOptionsResponse],
+    Optional[list[str]],
+    Optional[dict],
+]:
     """에이전트 JSON 응답을 파싱한다.
 
     지원 키:
     - recommendations → 추천 메뉴 카드 목록
     - menu_options     → 옵션 선택 구조화 응답
     - suggestions      → 퀵바 다음 발화 추천 문구 목록
+    - action           → 프론트가 받아 화면을 컨트롤하는 단일 명령
+                         (navigate / select_floor / highlight_menu /
+                          open_menu_detail / close_overlay /
+                          select_payment_method / select_restaurant)
     JSON 블록이 없거나 지원 키가 없으면 원본 텍스트를 그대로 반환한다.
     """
+    from service.graph.ui_actions import validate as validate_action
+
     try:
         json_str = _extract_json_block(raw)
         if json_str is None:
-            return _strip_markdown(raw), None, None, None
+            return _strip_markdown(raw), None, None, None, None
         data = json.loads(json_str)
 
         reply = _strip_markdown(data.get("reply") or data.get("message") or raw)
         recommendations: Optional[list[RecommendedMenu]] = None
         menu_options: Optional[MenuOptionsResponse] = None
         suggestions: Optional[list[str]] = None
+        action: Optional[dict] = None
 
-        if "recommendations" in data:
+        # 값이 null 이면 키가 있어도 건너뛴다 (null 순회/인덱싱 시 예외 → 원본 JSON 노출 버그 방지)
+        if data.get("recommendations"):
             recommendations = [RecommendedMenu(**item) for item in data["recommendations"]]
 
-        if "menu_options" in data:
+        if data.get("menu_options"):
             mo = data["menu_options"]
             menu_options = MenuOptionsResponse(
                 menu_id=mo["menu_id"],
@@ -269,7 +303,11 @@ def _parse_agent_reply(
         if isinstance(raw_suggestions, list):
             suggestions = [s for s in raw_suggestions if isinstance(s, str)][:3] or None
 
-        return reply, recommendations, menu_options, suggestions
+        # action 검증 — 잘못된 타입/페이로드는 None 으로 폐기 (서비스 흐름 안전)
+        if data.get("action"):
+            action = validate_action(data["action"])
+
+        return reply, recommendations, menu_options, suggestions, action
     except Exception:
         logging.debug("[에이전트 응답 파싱 스킵] JSON 아님 — 원본 텍스트 반환")
-        return _strip_markdown(raw), None, None, None
+        return _strip_markdown(raw), None, None, None, None

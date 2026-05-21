@@ -46,8 +46,8 @@ router = APIRouter(prefix="/order", tags=["order"])
     },
 )
 async def start_order(
-    body: StartOrderRequest,
-    service: OrderService = Depends(get_order_service),
+    body: StartOrderRequest, # React가 보낸 JSON
+    service: OrderService = Depends(get_order_service), # Depends가 get_order_service() 실행해서 OrderService 인스턴스를 주입해줌
 ) -> StartOrderResponse:
     """주문 세션을 시작하고 첫 인사 메시지를 반환한다."""
     return await service.start(mode=body.mode, language=body.language, order_type=body.order_type)
@@ -82,13 +82,13 @@ async def start_order(
     },
 )
 async def chat_order(
-    body: ChatOrderRequest,
-    service: OrderService = Depends(get_order_service),
+    body: ChatOrderRequest, # JSON 파싱
+    service: OrderService = Depends(get_order_service), # 싱글톤 인스턴스 
 ) -> ChatOrderResponse:
     """사용자 발화를 AI에게 전달하고 응답을 반환한다."""
     return await service.handle_chat(
-        session_id=body.session_id,
-        text=body.text,
-        nunchi_signal=body.nunchi_signal,
-        mode=body.mode,
+        session_id=body.session_id, # 세션 ID
+        text=body.text, # 사용자 발화
+        nunchi_signal=body.nunchi_signal, # 눈치 신호
+        mode=body.mode, # AVATAR / NORMAL
     )

@@ -8,7 +8,7 @@ from domain.session import OrderType, SessionMode, SessionResult
 
 
 async def create_session(
-    spring: SpringAdapter,
+    spring: SpringAdapter, # order_service에서 self._spring을 넘겨준 것. Spring과 통신하는 객체
     mode: SessionMode = SessionMode.avatar,
     language: str = "ko",
     order_type: OrderType = OrderType.dine_in,

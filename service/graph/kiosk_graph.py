@@ -7,6 +7,7 @@ OrderService가 이 그래프를 ainvoke()로 실행한다.
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
+from service.graph.nodes.clarify_node import run_clarify_node
 from service.graph.nodes.intent_node import classify_intent, route_by_intent
 from service.graph.nodes.nunchi_node import detect_nunchi
 from service.graph.nodes.order_node import run_order_agent
@@ -17,33 +18,42 @@ from service.graph.state import KioskState
 
 
 def _build_graph(with_checkpointer: bool = True):
+    # 빈 그래프 생성
     graph = StateGraph(KioskState)
 
+    # 노드들 등록
     graph.add_node("intent_classifier", classify_intent)
     graph.add_node("order_agent",        run_order_agent)
     graph.add_node("payment_agent",      run_payment_agent)
     graph.add_node("recommend_agent",    run_recommend_agent)
     graph.add_node("nunchi_detector",    detect_nunchi)
+    graph.add_node("clarify_responder",  run_clarify_node)
     graph.add_node("step_transition",    transition_step)
 
+    # ainvoke()호출 시 항상 여기서 시작
     graph.set_entry_point("intent_classifier")
 
+    # 엣지 설계 (함수 반환 값에 따라 다르게 분기)
     graph.add_conditional_edges(
-        "intent_classifier",
+        "intent_classifier", # 의도 분류 노드 실행
+        # 의도 분류 노드 실행이 끝난 후 아래 함수를 실행하여 다음 노드 결정
         route_by_intent,
         {
-            "order":      "order_agent",
+            "order":      "order_agent", # order 반환시 order_agent로
             "payment":    "payment_agent",
             "recommend":  "recommend_agent",
             "hesitation": "nunchi_detector",
+            "clarify":    "clarify_responder",   # OOD/인사/모호 발화
         },
     )
 
-    graph.add_edge("nunchi_detector",  "recommend_agent")
-    graph.add_edge("order_agent",      "step_transition")
-    graph.add_edge("recommend_agent",  "step_transition")
-    graph.add_edge("step_transition",  END)
-    graph.add_edge("payment_agent",    END)
+    # 고정 경로 설계
+    graph.add_edge("nunchi_detector",   "recommend_agent")
+    graph.add_edge("order_agent",       "step_transition")
+    graph.add_edge("recommend_agent",   "step_transition")
+    graph.add_edge("clarify_responder", END)
+    graph.add_edge("step_transition",   END)
+    graph.add_edge("payment_agent",     END)
 
     if with_checkpointer:
         return graph.compile(checkpointer=MemorySaver())

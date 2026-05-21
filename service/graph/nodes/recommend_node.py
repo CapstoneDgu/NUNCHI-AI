@@ -46,9 +46,16 @@ Tool 선택 기준:
 - 추천 개수는 최대 3개다.
 - 반드시 아래 JSON 형식만 출력해라. 다른 텍스트, 마크다운 블록, 설명을 절대 붙이지 마라.
 - message 텍스트에 마크다운 서식(**, *, #, `, _ 등)을 절대 사용하지 마라. 순수 텍스트로만 작성해라.
-- message: 아바타가 직접 읽어줄 짧은 안내 멘트 (1~2문장). 메뉴명·가격·파는 곳 같은 상세 정보는 넣지 마라.
+- message: 추천 메뉴를 안내하는 멘트. 길이와 상세 수준은 맨 아래 [응답 모드] 지시를 따른다.
 - recommendations: Tool에서 조회한 실제 값만 채워라. 없는 필드는 null로 둬라.
 - suggestions: 사용자가 다음에 할 법한 발화 3개. recommendations가 있으면 반드시 마지막 항목을 "다른 메뉴도 추천해줘"로 고정하고 나머지 2개는 탐색/장바구니 관련 문구를 넣어라. ("장바구니 확인해줘", "조건 바꿔서 추천해줘" 등)
+
+화면 액션(action) 규칙:
+- recommendations 가 1개 이상이면 첫 메뉴를 강조한다: {"type": "highlight_menu", "menu_id": <첫 추천 메뉴 ID>}
+- 사용자 발화가 특정 층("1층/2층/3층 메뉴") 을 명시하면: {"type": "select_floor", "floor": 1}
+- 사용자 발화가 특정 식당명("솥앤누들/분식당" 등) 을 명시하면: {"type": "select_restaurant", "name": "솥앤누들"}
+- 위 셋이 동시에 해당하면 highlight_menu 를 우선한다.
+- recommendations 가 없거나 명확한 화면 의도가 없으면 action 은 null.
 
 출력 형식:
 {
@@ -64,7 +71,8 @@ Tool 선택 기준:
       "quantity_sold": 50
     }
   ],
-  "suggestions": ["장바구니 확인해줘", "매운 거 빼고 다시 추천해줘", "다른 메뉴도 추천해줘"]
+  "suggestions": ["장바구니 확인해줘", "매운 거 빼고 다시 추천해줘", "다른 메뉴도 추천해줘"],
+  "action": {"type": "highlight_menu", "menu_id": 13}
 }
 """.strip()
 
@@ -75,8 +83,22 @@ async def run_recommend_agent(state: KioskState) -> dict:
 
     llm = ChatOpenAI(model=get_current_model(s.openai_model), api_key=s.openai_api_key, temperature=0.5)
 
+    # 모드별 message 상세 수준 — 텍스트 모드는 카드가 안 보이므로 message 에 상세를 다 담아야 한다.
+    mode = state.get("mode", "NORMAL")
+    if mode == "AVATAR":
+        verbosity = (
+            "\n\n[응답 모드] 음성 아바타 모드. message 는 1~2문장으로 짧게. "
+            "메뉴명·가격·파는 곳 같은 상세는 recommendations 카드가 보여주니 message 에는 넣지 마라."
+        )
+    else:
+        verbosity = (
+            "\n\n[응답 모드] 텍스트 채팅 모드. message 에 추천 메뉴의 이름·가격·파는 곳(층/식당)을 "
+            "모두 포함해, 사용자가 텍스트만 봐도 충분히 알 수 있게 2~4문장으로 충실히 작성해라. "
+            "(마크다운 서식은 여전히 금지 — 순수 텍스트로만)"
+        )
+
     tools = get_mcp_tools()
-    agent = create_react_agent(llm, tools, prompt=_RECOMMEND_SYSTEM_PROMPT)
+    agent = create_react_agent(llm, tools, prompt=_RECOMMEND_SYSTEM_PROMPT + verbosity)
     result = await agent.ainvoke({"messages": state["messages"]})
 
     return {"messages": result["messages"]}

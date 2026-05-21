@@ -193,6 +193,20 @@ class ChatOrderResponse(BaseModel):
         description="다음 발화 추천 문구 최대 3개. 프론트엔드 퀵바 버튼 렌더링에 사용한다. 버튼 클릭 시 해당 문자열을 text로 그대로 전달한다.",
         examples=[["다른 메뉴도 추천해줘", "장바구니 확인해줘", "결제할게"]],
     )
+    action: Optional[dict] = Field(
+        default=None,
+        description=(
+            "프론트가 받아 화면을 직접 컨트롤하는 단일 액션. "
+            "노드가 필요 시 채우며, 없으면 None. 프론트의 AiAction.handle()이 dispatch한다. "
+            "지원 타입: navigate / select_floor / select_restaurant / highlight_menu / "
+            "open_menu_detail / close_overlay / select_payment_method."
+        ),
+        examples=[
+            {"type": "navigate", "page": "/summary"},
+            {"type": "highlight_menu", "menu_id": 22},
+            {"type": "select_payment_method", "method": "barcode"},
+        ],
+    )
 
 
 class AddCartItemRequest(BaseModel):
