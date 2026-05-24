@@ -10,7 +10,7 @@ import asyncio
 import json
 import logging
 import re
-from typing import Optional
+from typing import AsyncGenerator, Optional
 
 from langchain_core.messages import HumanMessage
 
@@ -31,6 +31,53 @@ from kiosk_mcp.tools.session_tools import create_session, save_message
 from service.graph.kiosk_graph import build_kiosk_graph, build_prefetch_graph
 
 _GREETING_PROMPT = "안녕하세요! 무엇을 도와드릴까요? 메뉴를 추천해드릴까요, 아니면 직접 골라보시겠어요?"
+
+# SSE 스트리밍 대상 노드 — 최종 응답을 생성하는 LLM 노드만 포함
+# intent_classifier는 의도 분류용 중간 노드이므로 제외
+_STREAMING_NODES = {"recommend_agent", "order_agent", "payment_agent"}
+
+
+class _MessageExtractor:
+    """LLM이 스트리밍하는 JSON 토큰에서 "message" 필드 값만 추출한다.
+
+    LLM 출력 형식: {"message": "안녕하세요!", "recommendations": [...]}
+    토큰이 잘려서 오므로 버퍼에 쌓으며 "message": " 패턴을 탐색한 뒤
+    그 이후 값만 프론트로 흘려보낸다.
+    """
+
+    _OPEN = re.compile(r'"message"\s*:\s*"')
+
+    def __init__(self) -> None:
+        self._buf = ""
+        self._active = False   # message 값 구간 진입 여부
+        self._finished = False # message 값 추출 완료 여부
+
+    def feed(self, token: str) -> str:
+        """추출된 텍스트를 반환한다. 해당 구간이 아니면 빈 문자열."""
+        if self._finished:
+            return ""
+
+        if self._active:
+            # 닫는 따옴표 탐색 (프롬프트에서 이스케이프 없는 순수 텍스트 보장)
+            close = token.find('"')
+            if close == -1:
+                return token
+            self._active = False
+            self._finished = True
+            return token[:close]
+
+        self._buf += token
+        m = self._OPEN.search(self._buf)
+        if not m:
+            # 패턴이 버퍼 끝에 걸쳐있을 수 있으므로 최근 30자만 유지
+            if len(self._buf) > 30:
+                self._buf = self._buf[-30:]
+            return ""
+
+        rest = self._buf[m.end():]
+        self._buf = ""
+        self._active = True
+        return self.feed(rest)
 
 
 class OrderService:
@@ -125,6 +172,99 @@ class OrderService:
             self._schedule_prefetch(session_id, suggestions, mode)
 
         return response
+
+    async def handle_chat_stream(
+        self,
+        session_id: int,
+        text: str,
+        nunchi_signal: Optional[str] = None,
+        mode: str = "AVATAR",
+    ) -> AsyncGenerator[str, None]:
+        """SSE 스트리밍 핸들러.
+
+        LangGraph astream_events()로 LLM 토큰을 즉시 전송하고,
+        그래프 완료 후 recommendations / action 등 전체 파싱 결과를 done 이벤트로 전송한다.
+
+        이벤트 포맷:
+          data: {"type": "token", "text": "안녕"}      ← 말풍선 실시간 업데이트
+          data: {"type": "done",  "reply": "...", ...}  ← 전체 응답 (recommendations 등 포함)
+          data: {"type": "error", "message": "..."}     ← 오류 발생 시
+        """
+        # 프리패치 캐시 히트 → reply를 토큰으로 스트리밍 후 done 이벤트
+        cached = get_prefetch_cache().get(session_id, text)
+        if cached:
+            logging.debug("[프리패치 캐시 히트 SSE] session=%d text=%r", session_id, text)
+            await save_message(self._spring, session_id, "USER", text)
+            await save_message(self._spring, session_id, "ASSISTANT", cached.reply)
+            for ch in cached.reply:
+                yield f"data: {json.dumps({'type': 'token', 'text': ch}, ensure_ascii=False)}\n\n"
+            done = {
+                "type": "done",
+                "reply": cached.reply,
+                "recommendations": [r.model_dump() for r in cached.recommendations] if cached.recommendations else None,
+                "menu_options": cached.menu_options.model_dump() if cached.menu_options else None,
+                "suggestions": cached.suggestions,
+                "action": cached.action,
+                "current_step": cached.current_step,
+            }
+            yield f"data: {json.dumps(done, ensure_ascii=False)}\n\n"
+            return
+
+        await save_message(self._spring, session_id, "USER", text)
+
+        initial_state = {
+            "messages":      [HumanMessage(content=text)],
+            "session_id":    session_id,
+            "mode":          mode.upper(),
+            "nunchi_signal": nunchi_signal,
+        }
+        config = {"configurable": {"thread_id": str(session_id)}}
+        extractor = _MessageExtractor()
+
+        try:
+            async for event in self._graph.astream_events(initial_state, config=config, version="v2"):
+                if event["event"] != "on_chat_model_stream":
+                    continue
+                node = event.get("metadata", {}).get("langgraph_node", "")
+                if node not in _STREAMING_NODES:
+                    continue
+                chunk = event["data"]["chunk"]
+                # tool_call 중간 단계(content 없음)는 건너뜀
+                if not isinstance(chunk.content, str) or not chunk.content:
+                    continue
+                extracted = extractor.feed(chunk.content)
+                if extracted:
+                    yield f"data: {json.dumps({'type': 'token', 'text': extracted}, ensure_ascii=False)}\n\n"
+
+        except Exception as exc:
+            logging.warning("[SSE 스트림 오류] session=%d err=%s", session_id, exc)
+            yield f"data: {json.dumps({'type': 'error', 'message': '죄송해요, 다시 한 번 말씀해 주시겠어요?'}, ensure_ascii=False)}\n\n"
+            return
+
+        # 그래프 완료 후 MemorySaver에서 최종 상태 조회
+        final_state = await self._graph.aget_state(config)
+        messages = final_state.values.get("messages", [])
+        raw = messages[-1].content if messages else ""
+
+        reply, recommendations, menu_options, suggestions, parsed_action = _parse_agent_reply(raw)
+        current_step = final_state.values.get("current_step")
+        action = final_state.values.get("action") or parsed_action
+
+        await save_message(self._spring, session_id, "ASSISTANT", reply)
+
+        if suggestions:
+            self._schedule_prefetch(session_id, suggestions, mode)
+
+        done_payload = {
+            "type": "done",
+            "reply": reply,
+            "recommendations": [r.model_dump() for r in recommendations] if recommendations else None,
+            "menu_options": menu_options.model_dump() if menu_options else None,
+            "suggestions": suggestions,
+            "action": action,
+            "current_step": current_step,
+        }
+        yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
 
     def _schedule_prefetch(self, session_id: int, suggestions: list[str], mode: str) -> None:
         """suggestions 중 프리패치 적합한 것만 백그라운드 태스크로 실행한다.
