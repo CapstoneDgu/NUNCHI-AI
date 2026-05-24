@@ -2,6 +2,8 @@
 
 요청 파싱과 응답 반환만 담당한다. 비즈니스 로직은 OrderService에 위임한다.
 """
+from uuid import uuid4
+from app.core.logging_timer import log_step
 
 from fastapi import APIRouter, Depends
 
@@ -82,13 +84,22 @@ async def start_order(
     },
 )
 async def chat_order(
-    body: ChatOrderRequest, # JSON 파싱
-    service: OrderService = Depends(get_order_service), # 싱글톤 인스턴스 
+        body: ChatOrderRequest,
+        service: OrderService = Depends(get_order_service),
 ) -> ChatOrderResponse:
     """사용자 발화를 AI에게 전달하고 응답을 반환한다."""
-    return await service.handle_chat(
-        session_id=body.session_id, # 세션 ID
-        text=body.text, # 사용자 발화
-        nunchi_signal=body.nunchi_signal, # 눈치 신호
-        mode=body.mode, # AVATAR / NORMAL
-    )
+    request_id = str(uuid4())
+
+    with log_step(
+            "chat_total",
+            request_id=request_id,
+            session_id=body.session_id,
+            mode=body.mode,
+    ):
+        return await service.handle_chat(
+            session_id=body.session_id,
+            text=body.text,
+            nunchi_signal=body.nunchi_signal,
+            mode=body.mode,
+            request_id=request_id,
+        )

@@ -7,6 +7,7 @@
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
+from app.core.logging_timer import log_step
 from core.config import get_settings
 from core.model_context import get_current_model
 from service.graph.state import KioskState
@@ -163,20 +164,64 @@ _NORMAL_TONE = (
 
 async def run_order_agent(state: KioskState) -> dict:
     """주문/장바구니 ReAct 에이전트를 실행하고 결과를 반환한다."""
-    s = get_settings()
-    session_id = state["session_id"] # state 에서 세션id 꺼내기
-    mode = state.get("mode", "NORMAL") # state에서 mode 꺼내기 
 
-    # 말투 설정
-    tone = _AVATAR_TONE if mode == "AVATAR" else _NORMAL_TONE
-    system_prompt = tone + f"현재 session_id: {session_id}\n\n" + _ORDER_SYSTEM_PROMPT
+    # LangGraph 실행 흐름에서 전달받은 요청 추적 ID
+    # 하나의 /chat 요청 안에서 어떤 단계가 오래 걸렸는지 로그를 묶어서 보기 위해 사용
+    request_id = state.get("request_id")
 
-    # GPT + MCP Tool 묶어서 에이전트 생성
-    llm = ChatOpenAI(model=get_current_model(s.openai_model), api_key=s.openai_api_key, temperature=0.3)
-    tools = get_mcp_tools()
-    agent = create_react_agent(llm, tools, prompt=system_prompt)
+    # state 에서 세션 ID 꺼내기
+    # MCP Tool 호출 시 현재 주문 세션을 식별하는 값으로 사용
+    session_id = state["session_id"]
 
-    # 에이전트 실행
-    result = await agent.ainvoke({"messages": state["messages"]})
+    # state 에서 주문 모드 꺼내기
+    # AVATAR 모드와 NORMAL 모드에 따라 말투 프롬프트를 다르게 적용
+    mode = state.get("mode", "NORMAL")
 
-    return {"messages": result["messages"]}
+    # 프롬프트 준비 시간 측정
+    # 설정값 조회, 말투 선택, system_prompt 조립 구간이 오래 걸리는지 확인
+    with log_step("order_agent_prepare_prompt", request_id=request_id, session_id=session_id):
+        s = get_settings()
+
+        # 말투 설정
+        tone = _AVATAR_TONE if mode == "AVATAR" else _NORMAL_TONE
+        system_prompt = tone + f"현재 session_id: {session_id}\n\n" + _ORDER_SYSTEM_PROMPT
+
+    # LLM 객체 생성 시간 측정
+    # 매 요청마다 ChatOpenAI 객체를 만드는 비용이 큰지 확인
+    with log_step("order_agent_create_llm", request_id=request_id, session_id=session_id):
+        llm = ChatOpenAI(
+            model=get_current_model(s.openai_model),
+            api_key=s.openai_api_key,
+            temperature=0.3,
+        )
+
+    # MCP Tool 목록 조회 시간 측정
+    # get_mcp_tools()가 캐싱된 Tool 목록을 즉시 반환하는지 확인
+    with log_step("order_agent_get_mcp_tools", request_id=request_id, session_id=session_id):
+        tools = get_mcp_tools()
+
+    # ReAct Agent 생성 시간 측정
+    # LLM과 MCP Tool을 묶어 agent를 구성하는 비용 확인
+    with log_step(
+            "order_agent_create_react_agent",
+            request_id=request_id,
+            session_id=session_id,
+            tool_count=len(tools),
+    ):
+        agent = create_react_agent(llm, tools, prompt=system_prompt)
+
+    # ReAct Agent 실행 시간 측정
+    # 실제 LLM 호출, Tool 선택, MCP Tool 호출, 최종 응답 생성이 이 구간에서 수행됨
+    # order_agent 전체 병목의 핵심 후보
+    with log_step(
+            "order_agent_ainvoke",
+            request_id=request_id,
+            session_id=session_id,
+            message_count=len(state["messages"]),
+    ):
+        result = await agent.ainvoke({"messages": state["messages"]})
+
+    # LangGraph 다음 단계로 넘길 결과 생성 시간 측정
+    # agent 실행 결과에서 messages만 추출해 반환
+    with log_step("order_agent_build_result", request_id=request_id, session_id=session_id):
+        return {"messages": result["messages"]}
