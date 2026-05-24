@@ -47,6 +47,7 @@ Tool 선택 기준:
 - 반드시 아래 JSON 형식만 출력해라. 다른 텍스트, 마크다운 블록, 설명을 절대 붙이지 마라.
 - message 텍스트에 마크다운 서식(**, *, #, `, _ 등)을 절대 사용하지 마라. 순수 텍스트로만 작성해라.
 - message: 추천 메뉴를 안내하는 멘트. 길이와 상세 수준은 맨 아래 [응답 모드] 지시를 따른다.
+  [필수] message 는 절대 null 이나 빈 문자열("")로 두지 마라. Tool 조회 결과가 없어도 "조건에 맞는 메뉴를 찾지 못했어요." 처럼 반드시 사용자에게 전달할 문장을 작성해야 한다.
 - recommendations: Tool에서 조회한 실제 값만 채워라. 없는 필드는 null로 둬라.
 - suggestions: 사용자가 다음에 할 법한 발화 3개. recommendations가 있으면 반드시 마지막 항목을 "다른 메뉴도 추천해줘"로 고정하고 나머지 2개는 탐색/장바구니 관련 문구를 넣어라. ("장바구니 확인해줘", "조건 바꿔서 추천해줘" 등)
 
@@ -81,7 +82,7 @@ async def run_recommend_agent(state: KioskState) -> dict:
     """추천 ReAct 에이전트를 실행하고 결과를 반환한다."""
     s = get_settings()
 
-    llm = ChatOpenAI(model=get_current_model(s.openai_model), api_key=s.openai_api_key, temperature=0.5)
+    llm = ChatOpenAI(model=get_current_model(s.openai_model), api_key=s.openai_api_key, temperature=0.2)
 
     # 모드별 message 상세 수준 — 텍스트 모드는 카드가 안 보이므로 message 에 상세를 다 담아야 한다.
     mode = state.get("mode", "NORMAL")

@@ -272,7 +272,9 @@ def _parse_agent_reply(
             return _strip_markdown(raw), None, None, None, None
         data = json.loads(json_str)
 
-        reply = _strip_markdown(data.get("reply") or data.get("message") or raw)
+        # JSON 파싱 성공 시 raw(전체 JSON 문자열)로 폴백하면 recommendations 등이 reply에 노출됨
+        # message가 비어있으면 기본 안내 문구로 대체 (최후 방어선)
+        reply = _strip_markdown(data.get("reply") or data.get("message") or "") or "죄송해요, 다시 한 번 말씀해 주시겠어요?"
         recommendations: Optional[list[RecommendedMenu]] = None
         menu_options: Optional[MenuOptionsResponse] = None
         suggestions: Optional[list[str]] = None
