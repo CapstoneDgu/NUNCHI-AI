@@ -7,7 +7,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from domain.cart import CartItem, CartItemOption
 from domain.session import OrderType
 
-
 class OrderStatus(str, Enum):
     pending   = "PENDING"
     completed = "COMPLETED"
