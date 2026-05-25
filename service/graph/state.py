@@ -16,6 +16,7 @@ class KioskState(TypedDict):
     payment_id: Optional[int]               # request_payment 후 채워짐
     nunchi_signal: Optional[str]             # 눈치 신호 종류 (silence/hesitation/repeat_browse)
     recommended_menu_ids: list[int]          # 추천된 메뉴 ID 목록
+    request_id: Optional[str]
     # 프론트가 받아 화면을 직접 컨트롤하는 단일 액션. 노드가 필요 시 채움.
     # 예) {"type": "navigate", "page": "/summary"}
     #     {"type": "highlight_menu", "menu_id": 22}

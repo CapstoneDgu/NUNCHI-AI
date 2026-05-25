@@ -2,8 +2,11 @@
 
 요청 파싱과 응답 반환만 담당한다. 비즈니스 로직은 OrderService에 위임한다.
 """
+from uuid import uuid4
+from app.core.logging_timer import log_step
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 
 from adapter.factory import get_order_service
 from domain.api_response import ApiErrorResponse
@@ -81,14 +84,64 @@ async def start_order(
         },
     },
 )
+
 async def chat_order(
-    body: ChatOrderRequest, # JSON 파싱
-    service: OrderService = Depends(get_order_service), # 싱글톤 인스턴스 
+    body: ChatOrderRequest,
+    service: OrderService = Depends(get_order_service),
 ) -> ChatOrderResponse:
     """사용자 발화를 AI에게 전달하고 응답을 반환한다."""
-    return await service.handle_chat(
-        session_id=body.session_id, # 세션 ID
-        text=body.text, # 사용자 발화
-        nunchi_signal=body.nunchi_signal, # 눈치 신호
-        mode=body.mode, # AVATAR / NORMAL
+    request_id = str(uuid4())
+
+    with log_step(
+        "chat_total",
+        request_id=request_id,
+        session_id=body.session_id,
+        mode=body.mode,
+    ):
+        return await service.handle_chat(
+            session_id=body.session_id,
+            text=body.text,
+            nunchi_signal=body.nunchi_signal,
+            mode=body.mode,
+            request_id=request_id,
+        )
+
+
+@router.post(
+    "/chat/stream",
+    summary="주문 대화 처리 (SSE 스트리밍)",
+    description=(
+        "사용자 발화를 AI에게 전달하고 응답을 SSE(Server-Sent Events)로 스트리밍합니다.\n\n"
+        "응답은 두 종류의 이벤트로 구성됩니다.\n"
+        "- `token`: LLM이 생성하는 텍스트 토큰. 도착 즉시 말풍선에 표시합니다.\n"
+        "- `done`: 전체 응답 완료. `reply` / `recommendations` / `suggestions` / `action` / `current_step` 포함.\n"
+        "- `error`: 처리 중 오류 발생 시.\n\n"
+        "기존 `/chat` 엔드포인트는 호환성을 위해 유지됩니다."
+    ),
+    responses={
+        422: {"description": "요청값 검증 실패"},
+        502: {"model": ApiErrorResponse, "description": "Spring 백엔드 연동 실패"},
+    },
+)
+async def chat_order_stream(
+    body: ChatOrderRequest,
+    service: OrderService = Depends(get_order_service),
+) -> StreamingResponse:
+    """사용자 발화를 AI에게 전달하고 SSE로 스트리밍한다."""
+    request_id = str(uuid4())
+
+    return StreamingResponse(
+        service.handle_chat_stream(
+            session_id=body.session_id,
+            text=body.text,
+            nunchi_signal=body.nunchi_signal,
+            mode=body.mode,
+            request_id=request_id,
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
     )

@@ -9,8 +9,11 @@
 
 from __future__ import annotations
 
+import functools
 import json
+import logging
 import os
+import time
 from typing import Optional
 
 from fastmcp import FastMCP
@@ -27,6 +30,70 @@ from domain.session import SessionMode
 
 _settings = get_mcp_settings()
 _spring = SpringAdapter(_settings)
+
+logger = logging.getLogger(__name__)
+
+
+def _format_extra(extra: dict) -> str:
+    return " ".join(f"{key}={value}" for key, value in extra.items())
+
+
+def _safe_log_kwargs(kwargs: dict) -> dict:
+    """로그에 남겨도 되는 식별자만 필터링한다.
+
+    content, barcode_value 등 사용자 발화나 결제 관련 민감 값은 제외한다.
+    """
+    blocked_keys = {"content", "barcode_value"}
+
+    return {
+        key: value
+        for key, value in kwargs.items()
+        if key not in blocked_keys
+    }
+
+
+def log_mcp_tool(tool_name: str):
+    """MCP Tool 실행 시간을 측정하는 데코레이터."""
+
+    def decorator(func):
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            start = time.perf_counter()
+
+            try:
+                result = await func(*args, **kwargs)
+            except Exception:
+                elapsed_ms = int((time.perf_counter() - start) * 1000)
+                safe_kwargs = _safe_log_kwargs(kwargs)
+
+                message = (
+                    f"[MCP_TOOL] tool={tool_name} "
+                    f"elapsedMs={elapsed_ms} "
+                    f"status=FAIL "
+                    f"{_format_extra(safe_kwargs)}"
+                )
+
+                print(message, flush=True)
+                logger.exception(message)
+                raise
+
+            elapsed_ms = int((time.perf_counter() - start) * 1000)
+            safe_kwargs = _safe_log_kwargs(kwargs)
+
+            message = (
+                f"[MCP_TOOL] tool={tool_name} "
+                f"elapsedMs={elapsed_ms} "
+                f"status=SUCCESS "
+                f"{_format_extra(safe_kwargs)}"
+            )
+
+            print(message, flush=True)
+            logger.info(message)
+            return result
+
+        return wrapper
+
+    return decorator
 
 _INSTRUCTIONS = """
 너는 눈치 키오스크 AI 어시스턴트다.
@@ -48,6 +115,7 @@ mcp_app = FastMCP("nunchi-kiosk", instructions=_INSTRUCTIONS)
 # ─── 세션 시작 / 대화 저장 Tool ──────────────────────────────────────────────
 
 @mcp_app.tool()
+@log_mcp_tool("tool_create_session")
 async def tool_create_session(language: str = "ko", order_type: str = "DINE_IN") -> str:
     """대화 세션을 시작한다. 반드시 대화 첫 번째로 호출해야 한다. session_id를 반환한다. order_type은 DINE_IN(매장) 또는 TAKEOUT(포장)."""
     from domain.session import OrderType
@@ -57,6 +125,7 @@ async def tool_create_session(language: str = "ko", order_type: str = "DINE_IN")
 
 
 @mcp_app.tool()
+@log_mcp_tool("tool_save_message")
 async def tool_save_message(session_id: int, role: str, content: str) -> str:
     """대화 메시지를 저장한다. role은 USER 또는 ASSISTANT 중 하나다."""
     normalized_role = role.upper()
@@ -69,6 +138,7 @@ async def tool_save_message(session_id: int, role: str, content: str) -> str:
 # ─── 메뉴 / 카테고리 Tool ────────────────────────────────────────────────────
 
 @mcp_app.tool()
+@log_mcp_tool("tool_get_categories")
 async def tool_get_categories() -> str:
     """카테고리 목록을 조회한다."""
     return json.dumps(
@@ -78,6 +148,7 @@ async def tool_get_categories() -> str:
 
 
 @mcp_app.tool()
+@log_mcp_tool("tool_get_menus")
 async def tool_get_menus(category_id: Optional[int] = None) -> str:
     """메뉴 목록을 조회한다. category_id를 주면 해당 카테고리만 반환한다."""
     return json.dumps(
@@ -87,6 +158,7 @@ async def tool_get_menus(category_id: Optional[int] = None) -> str:
 
 
 @mcp_app.tool()
+@log_mcp_tool("tool_get_top_menus")
 async def tool_get_top_menus(limit: int = 5) -> str:
     """오늘 판매량 기준 인기 메뉴 목록을 반환한다. limit으로 개수를 조절한다."""
     return json.dumps(
@@ -96,6 +168,7 @@ async def tool_get_top_menus(limit: int = 5) -> str:
 
 
 @mcp_app.tool()
+@log_mcp_tool("tool_get_menu_detail")
 async def tool_get_menu_detail(menu_id: int) -> str:
     """메뉴 상세 정보와 옵션을 조회한다. 장바구니 담기 전 반드시 호출해야 한다."""
     return json.dumps(
@@ -105,6 +178,7 @@ async def tool_get_menu_detail(menu_id: int) -> str:
 
 
 @mcp_app.tool()
+@log_mcp_tool("tool_filter_menus")
 async def tool_filter_menus(
     max_calorie: Optional[int] = None,
     min_calorie: Optional[int] = None,
@@ -157,6 +231,7 @@ async def tool_filter_menus(
 
 
 @mcp_app.tool()
+@log_mcp_tool("tool_search_menus")
 async def tool_search_menus(name: str) -> str:
     """메뉴명으로 검색한다. 발화에서 추출한 메뉴명을 넣으면 menuId를 포함한 목록을 반환한다."""
     return json.dumps(
@@ -166,6 +241,7 @@ async def tool_search_menus(name: str) -> str:
 
 
 @mcp_app.tool()
+@log_mcp_tool("tool_update_step")
 async def tool_update_step(session_id: int, step: str) -> str:
     """주문 단계를 이동한다. step 값: BROWSE / SELECT / CONFIGURE / CHECKOUT"""
     result = await update_step(_spring, session_id, step)
@@ -175,6 +251,7 @@ async def tool_update_step(session_id: int, step: str) -> str:
 # ─── 장바구니 Tool ────────────────────────────────────────────────────────────
 
 @mcp_app.tool()
+@log_mcp_tool("tool_add_cart_item")
 async def tool_add_cart_item(session_id: int, menu_id: int, quantity: int, option_ids: list[int]) -> str:
     """장바구니에 메뉴를 담는다. 옵션 없으면 option_ids는 빈 배열로 전달한다."""
     result = json.dumps(
@@ -190,6 +267,7 @@ async def tool_add_cart_item(session_id: int, menu_id: int, quantity: int, optio
 
 
 @mcp_app.tool()
+@log_mcp_tool("tool_get_cart")
 async def tool_get_cart(session_id: int) -> str:
     """현재 장바구니 전체를 조회한다."""
     return json.dumps(
@@ -199,6 +277,7 @@ async def tool_get_cart(session_id: int) -> str:
 
 
 @mcp_app.tool()
+@log_mcp_tool("tool_update_cart_item")
 async def tool_update_cart_item(session_id: int, item_id: str, quantity: int) -> str:
     """장바구니 아이템 수량을 수정한다. item_id는 장바구니 조회 결과의 item_id(UUID)다."""
     result = json.dumps(
@@ -214,6 +293,7 @@ async def tool_update_cart_item(session_id: int, item_id: str, quantity: int) ->
 
 
 @mcp_app.tool()
+@log_mcp_tool("tool_clear_cart")
 async def tool_clear_cart(session_id: int) -> str:
     """장바구니 전체를 초기화한다. 루프백 재시작 또는 전체 취소 시 사용한다."""
     result = await clear_cart(_spring, session_id)
@@ -221,6 +301,7 @@ async def tool_clear_cart(session_id: int) -> str:
 
 
 @mcp_app.tool()
+@log_mcp_tool("tool_remove_cart_item")
 async def tool_remove_cart_item(session_id: int, item_id: str) -> str:
     """장바구니 아이템을 삭제한다. item_id는 장바구니 조회 결과의 item_id(UUID)다."""
     result = json.dumps(
@@ -238,6 +319,7 @@ async def tool_remove_cart_item(session_id: int, item_id: str) -> str:
 # ─── 주문 / 결제 / 세션 Tool ──────────────────────────────────────────────────
 
 @mcp_app.tool()
+@log_mcp_tool("tool_confirm_order")
 async def tool_confirm_order(session_id: int) -> str:
     """장바구니를 주문으로 확정한다. 결제 전 반드시 호출해야 한다."""
     result = json.dumps(
@@ -249,6 +331,7 @@ async def tool_confirm_order(session_id: int) -> str:
 
 
 @mcp_app.tool()
+@log_mcp_tool("tool_request_payment")
 async def tool_request_payment(session_id: int, order_id: int, method: str) -> str:
     """결제를 요청한다. method는 IC_CARD / VEIN_AUTH 중 하나다."""
     try:
@@ -268,6 +351,7 @@ async def tool_request_payment(session_id: int, order_id: int, method: str) -> s
 
 
 @mcp_app.tool()
+@log_mcp_tool("tool_pay_by_barcode")
 async def tool_pay_by_barcode(session_id: int, order_id: int, barcode_value: str) -> str:
     """바코드로 결제한다. 즉시 SUCCESS 처리된다.
     선행 조건: confirm_order 완료 → orderId 보유.
@@ -286,6 +370,7 @@ async def tool_pay_by_barcode(session_id: int, order_id: int, barcode_value: str
 
 
 @mcp_app.tool()
+@log_mcp_tool("tool_confirm_payment_success")
 async def tool_confirm_payment_success(session_id: int, payment_id: int) -> str:
     """IC_CARD / VEIN_AUTH 단말기 승인 완료 후 결제를 성공 처리한다.
     tool_request_payment로 생성된 PENDING 상태의 payment_id를 사용해야 한다.
@@ -304,6 +389,7 @@ async def tool_confirm_payment_success(session_id: int, payment_id: int) -> str:
 
 
 @mcp_app.tool()
+@log_mcp_tool("tool_fail_payment")
 async def tool_fail_payment(session_id: int, payment_id: int) -> str:
     """단말기 승인 실패 또는 사용자 취소 시 결제를 실패 처리한다.
     FAILED 상태가 되면 동일 orderId로 재결제 가능.
@@ -322,6 +408,7 @@ async def tool_fail_payment(session_id: int, payment_id: int) -> str:
 
 
 @mcp_app.tool()
+@log_mcp_tool("tool_complete_session")
 async def tool_complete_session(session_id: int) -> str:
     """주문 세션을 종료한다. 결제 완료 후 호출한다."""
     result = json.dumps(await complete_session(_spring, session_id), ensure_ascii=False)
