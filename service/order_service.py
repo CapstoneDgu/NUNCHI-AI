@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import re
+import uuid
 from typing import AsyncGenerator, Optional
 
 from langchain_core.messages import HumanMessage
@@ -185,6 +186,7 @@ class OrderService:
         text: str,
         nunchi_signal: Optional[str] = None,
         mode: str = "AVATAR",
+        request_id: str | None = None,
     ) -> AsyncGenerator[str, None]:
         """SSE 스트리밍 핸들러.
 
@@ -223,6 +225,7 @@ class OrderService:
             "session_id":    session_id,
             "mode":          mode.upper(),
             "nunchi_signal": nunchi_signal,
+            "request_id": request_id,
         }
         config = {"configurable": {"thread_id": str(session_id)}}
         extractor = _MessageExtractor()
