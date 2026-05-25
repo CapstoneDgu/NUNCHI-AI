@@ -15,6 +15,7 @@ from typing import AsyncGenerator, Optional
 from langchain_core.messages import HumanMessage
 
 from adapter.spring_adapter import SpringAdapter
+from app.core.logging_timer import log_step
 from core.config import get_settings
 from core.model_context import set_model_override
 from core.prefetch_cache import get_prefetch_cache
@@ -102,11 +103,12 @@ class OrderService:
         )
 
     async def handle_chat(
-        self,
-        session_id: int,
-        text: str,
-        nunchi_signal: Optional[str] = None,
-        mode: str = "NORMAL",
+            self,
+            session_id: int,
+            text: str,
+            nunchi_signal: Optional[str] = None,
+            mode: str = "NORMAL",
+            request_id: Optional[str] = None,
     ) -> ChatOrderResponse:
         """사용자 발화를 받아 그래프를 실행하고 AI 응답을 반환한다.
 
@@ -123,7 +125,8 @@ class OrderService:
             return cached
 
         # 2. 사용자 발화 저장
-        await save_message(self._spring, session_id, "USER", text)
+        with log_step("save_user_message", request_id=request_id, session_id=session_id):
+            await save_message(self._spring, session_id, "USER", text)
 
         # session_id와 messages, nunchi_signal만 넘긴다.
         # order_id / payment_id / intent 등은 그래프 노드가 관리하며
@@ -135,13 +138,15 @@ class OrderService:
             "session_id":    session_id,
             "mode":          mode.upper(),
             "nunchi_signal": nunchi_signal,
+            "request_id":    request_id,
         }
 
         # ainvoke는 그래프를 실행시키는 함수
-        result = await self._graph.ainvoke(
-            initial_state,
-            config={"configurable": {"thread_id": str(session_id)}},
-        )
+        with log_step("langgraph_invoke", request_id=request_id, session_id=session_id):
+            result = await self._graph.ainvoke(
+                initial_state,
+                config={"configurable": {"thread_id": str(session_id)}},
+            )
 
         messages = result.get("messages") or []
         if not messages:
@@ -155,7 +160,8 @@ class OrderService:
         action = result.get("action") or parsed_action
 
         # 3. AI 응답 저장
-        await save_message(self._spring, session_id, "ASSISTANT", reply)
+        with log_step("save_assistant_message", request_id=request_id, session_id=session_id):
+            await save_message(self._spring, session_id, "ASSISTANT", reply)
 
         response = ChatOrderResponse(
             session_id=session_id,
