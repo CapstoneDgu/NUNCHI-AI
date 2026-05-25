@@ -23,3 +23,7 @@ REQUEST.md
 reference/
 *.docx
 EXPLAIN.md
+
+# logs
+logs/
+*.log
