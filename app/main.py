@@ -133,7 +133,11 @@ async def mcp_server_card():
     return JSONResponse({
         "name": "NUNCHI Kiosk MCP Server",
         "description": "눈치 키오스크 주문/메뉴/결제 MCP 도구 모음",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "connections": [{
+            "type": "sse",
+            "url": "https://43-201-20-11.sslip.io/mcp/sse"
+        }]
     })
 
 
