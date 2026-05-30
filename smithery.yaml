@@ -1,0 +1,23 @@
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      springBaseUrl:
+        type: string
+        description: "NUNCHI 키오스크 Spring 백엔드 URL"
+        default: "http://43.201.20.11:8080"
+      springTimeout:
+        type: number
+        description: "Spring API 호출 타임아웃 (초)"
+        default: 5
+  commandFunction: |-
+    (config) => ({
+      command: "python",
+      args: ["-m", "kiosk_mcp.mcp_server"],
+      env: {
+        MCP_TRANSPORT: "stdio",
+        SPRING_BASE_URL: config.springBaseUrl || "http://43.201.20.11:8080",
+        SPRING_TIMEOUT: String(config.springTimeout || 5)
+      }
+    })
