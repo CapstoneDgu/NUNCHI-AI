@@ -136,7 +136,7 @@ async def mcp_server_card():
         "version": "1.0.0",
         "connections": [{
             "type": "sse",
-            "url": "https://43-201-20-11.sslip.io/mcp/sse"
+            "url": "https://43-201-20-11.sslip.io/mcp/"
         }]
     })
 

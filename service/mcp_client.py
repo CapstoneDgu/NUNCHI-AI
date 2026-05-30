@@ -19,7 +19,7 @@ async def initialize_mcp_client() -> None:
         return
     s = get_settings()
     client = MultiServerMCPClient(
-        {"kiosk": {"url": f"{s.mcp_server_url}/sse", "transport": "sse"}}
+        {"kiosk": {"url": f"{s.mcp_server_url}/", "transport": "streamable_http"}}
     )
     tools = await client.get_tools()
     _client = client
