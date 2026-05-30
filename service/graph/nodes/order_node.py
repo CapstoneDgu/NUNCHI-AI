@@ -4,6 +4,7 @@
 초기화 시 캐싱된 MCP Tool 목록(get_mcp_tools)을 재사용한다.
 """
 
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
@@ -52,8 +53,11 @@ _ORDER_SYSTEM_PROMPT = """
 메뉴+수량+결제 의사가 한 발화에 모두 있으면 단계를 무시하고 바로 담기+결제로 진행한다.
 
 [장바구니 조회 / 수정 / 삭제]
-사용자가 "장바구니에 뭐 있어?", "담은 게 뭐야?", "뭐 담았어?" 같이 현재 장바구니를 물으면
+사용자가 "장바구니에 뭐 있어?", "담은 게 뭐야?", "뭐 담았어?", "장바구니 확인해줘" 같이 현재 장바구니를 물으면
 반드시 tool_get_cart(session_id=...) 를 호출한 뒤 그 결과를 기반으로 답해라.
+[절대 금지] 이전 대화 기록에 tool_get_cart 결과가 이미 있어도 절대 재사용하지 마라. 장바구니는 외부에서 언제든 변경될 수 있으므로 매번 반드시 tool_get_cart를 새로 호출해야 한다.
+[절대 금지] 이전 대화에서 "담겼습니다"라고 말한 내용을 근거로 장바구니 상태를 추론하지 마라.
+장바구니 상태는 오직 방금 호출한 tool_get_cart 결과만 신뢰해라.
 - 항목이 없으면 "아직 장바구니가 비어 있어요."
 - 항목이 있으면 메뉴명·수량·금액을 가독성 있게 나열하고 총합도 알려줘.
 
@@ -193,6 +197,7 @@ async def run_order_agent(state: KioskState) -> dict:
             model=get_current_model(s.openai_model),
             api_key=s.openai_api_key,
             temperature=0.3,
+            streaming=True,
         )
 
     # MCP Tool 목록 조회 시간 측정
@@ -213,13 +218,22 @@ async def run_order_agent(state: KioskState) -> dict:
     # ReAct Agent 실행 시간 측정
     # 실제 LLM 호출, Tool 선택, MCP Tool 호출, 최종 응답 생성이 이 구간에서 수행됨
     # order_agent 전체 병목의 핵심 후보
+    # 장바구니 조회 발화면 메시지 직전에 강제 tool 호출 힌트 주입
+    _CART_QUERY_KEYWORDS = ("장바구니", "뭐 담", "담은 거", "담은게", "뭐담")
+    messages = list(state["messages"])
+    last_human = next((m for m in reversed(messages) if isinstance(m, HumanMessage)), None)
+    if last_human and any(kw in last_human.content for kw in _CART_QUERY_KEYWORDS):
+        messages.insert(-1, SystemMessage(
+            content="[시스템] 이전 tool_get_cart 결과는 무효다. 지금 즉시 tool_get_cart를 호출해서 최신 장바구니를 확인해라."
+        ))
+
     with log_step(
             "order_agent_ainvoke",
             request_id=request_id,
             session_id=session_id,
-            message_count=len(state["messages"]),
+            message_count=len(messages),
     ):
-        result = await agent.ainvoke({"messages": state["messages"]})
+        result = await agent.ainvoke({"messages": messages})
 
     # LangGraph 다음 단계로 넘길 결과 생성 시간 측정
     # agent 실행 결과에서 messages만 추출해 반환

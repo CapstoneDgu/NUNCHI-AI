@@ -59,7 +59,7 @@ async def run_payment_agent(state: KioskState) -> dict:
     session_id = state["session_id"]
     prompt = _PAYMENT_SYSTEM_PROMPT + f"\n\n현재 세션 ID: {session_id}"
 
-    llm = ChatOpenAI(model=get_current_model(s.openai_model), api_key=s.openai_api_key, temperature=0)
+    llm = ChatOpenAI(model=get_current_model(s.openai_model), api_key=s.openai_api_key, temperature=0, streaming=True)
 
     # 결제 노드는 화면 안내만 한다 — 결제 완료용 MCP tool 을 주지 않아 백엔드 결제를 못 한다.
     agent = create_react_agent(llm, [], prompt=prompt)
