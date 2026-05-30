@@ -437,4 +437,4 @@ if __name__ == "__main__":
     else:
         host = os.getenv("MCP_SERVER_HOST", "0.0.0.0")
         port = int(os.getenv("MCP_SERVER_PORT", "8090"))
-        mcp_app.run(transport="sse", host=host, port=port)  # FastAPI 연결용
+        mcp_app.run(transport="streamable-http", host=host, port=port, path="/")  # FastAPI 연결용
