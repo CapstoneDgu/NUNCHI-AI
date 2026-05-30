@@ -82,7 +82,7 @@ async def run_recommend_agent(state: KioskState) -> dict:
     """추천 ReAct 에이전트를 실행하고 결과를 반환한다."""
     s = get_settings()
 
-    llm = ChatOpenAI(model=get_current_model(s.openai_model), api_key=s.openai_api_key, temperature=0.2)
+    llm = ChatOpenAI(model=get_current_model(s.openai_model), api_key=s.openai_api_key, temperature=0.2, streaming=True)
 
     # 모드별 message 상세 수준 — 텍스트 모드는 카드가 안 보이므로 message 에 상세를 다 담아야 한다.
     mode = state.get("mode", "NORMAL")
