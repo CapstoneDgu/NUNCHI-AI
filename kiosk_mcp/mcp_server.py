@@ -33,6 +33,15 @@ _spring = SpringAdapter(_settings)
 
 logger = logging.getLogger(__name__)
 
+# Smithery API Key 인증 — 환경변수 MCP_API_KEY가 설정된 경우에만 검증
+_MCP_API_KEY = os.getenv("MCP_API_KEY", "")
+
+
+def _verify_api_key(api_key: str) -> None:
+    """API Key 검증. MCP_API_KEY 미설정 시 검증 생략 (로컬/FastAPI 연동용)."""
+    if _MCP_API_KEY and api_key != _MCP_API_KEY:
+        raise PermissionError("유효하지 않은 API Key입니다.")
+
 
 def _format_extra(extra: dict) -> str:
     return " ".join(f"{key}={value}" for key, value in extra.items())
@@ -419,7 +428,12 @@ async def tool_complete_session(session_id: int) -> str:
 if __name__ == "__main__":
     transport = os.getenv("MCP_TRANSPORT", "sse")
     if transport == "stdio":
-        mcp_app.run()  # Claude Desktop 연결용
+        # Smithery/Claude Desktop 연결 시 API Key 검증
+        if _MCP_API_KEY:
+            provided = os.getenv("MCP_API_KEY_PROVIDED", _MCP_API_KEY)
+            if provided != _MCP_API_KEY:
+                raise SystemExit("❌ 유효하지 않은 API Key입니다. 서버를 시작할 수 없습니다.")
+        mcp_app.run()
     else:
         host = os.getenv("MCP_SERVER_HOST", "0.0.0.0")
         port = int(os.getenv("MCP_SERVER_PORT", "8090"))
