@@ -36,7 +36,7 @@ _GREETING_PROMPT = "안녕하세요! 무엇을 도와드릴까요? 메뉴를 추
 
 # SSE 스트리밍 대상 노드 — 최종 응답을 생성하는 LLM 노드만 포함
 # intent_classifier는 의도 분류용 중간 노드이므로 제외
-_STREAMING_NODES = {"recommend_agent", "order_agent", "payment_agent"}
+_STREAMING_NODES = {"agent"}
 
 
 class _MessageExtractor:
@@ -201,7 +201,7 @@ class OrderService:
         # 프리패치 캐시 히트 → reply를 토큰으로 스트리밍 후 done 이벤트
         cached = get_prefetch_cache().get(session_id, text)
         if cached:
-            logging.debug("[프리패치 캐시 히트 SSE] session=%d text=%r", session_id, text)
+            logging.info("[프리패치 캐시 히트 SSE] session=%d text=%r", session_id, text)
             await save_message(self._spring, session_id, "USER", text)
             await save_message(self._spring, session_id, "ASSISTANT", cached.reply)
             for ch in cached.reply:

@@ -193,6 +193,7 @@ async def run_order_agent(state: KioskState) -> dict:
             model=get_current_model(s.openai_model),
             api_key=s.openai_api_key,
             temperature=0.3,
+            streaming=True,
         )
 
     # MCP Tool 목록 조회 시간 측정
