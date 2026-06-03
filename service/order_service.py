@@ -156,6 +156,9 @@ class OrderService:
 
         # JSON 응답 파싱 (추천 / 옵션 / 퀵바 suggestions / 화면 액션)
         reply, recommendations, menu_options, suggestions, parsed_action = _parse_agent_reply(raw)
+        # recommendations null 필드 보강: LLM이 image_url 등을 누락한 경우 tool 결과로 채움
+        if recommendations:
+            recommendations = _enrich_recommendations_from_messages(recommendations, messages)
         # menu_options 보강/필터링: 누락 시 tool 결과로 복원, 담기 완료 시 선택 옵션만 표시
         menu_options = _apply_menu_options_from_messages(menu_options, messages, reply)
         current_step = result.get("current_step")
@@ -258,6 +261,9 @@ class OrderService:
         raw = _normalize_content(messages[-1].content) if messages else ""
 
         reply, recommendations, menu_options, suggestions, parsed_action = _parse_agent_reply(raw)
+        if recommendations:
+            recommendations = _enrich_recommendations_from_messages(recommendations, messages)
+        menu_options = _apply_menu_options_from_messages(menu_options, messages, reply)
         current_step = final_state.values.get("current_step")
         action = final_state.values.get("action") or parsed_action
 
@@ -326,6 +332,9 @@ class OrderService:
             raw = _normalize_content(messages[-1].content)
             # 결과 파싱
             reply, recommendations, menu_options, suggestions, parsed_action = _parse_agent_reply(raw)
+            if recommendations:
+                recommendations = _enrich_recommendations_from_messages(recommendations, messages)
+            menu_options = _apply_menu_options_from_messages(menu_options, messages, reply)
             current_step = result.get("current_step")
             action = result.get("action") or parsed_action
 
@@ -368,6 +377,53 @@ def _parse_mcp_tool_content(content) -> dict | None:
         return json.loads(content) if isinstance(content, str) else None
     except Exception:
         return None
+
+
+def _enrich_recommendations_from_messages(
+    recommendations: list,
+    messages: list,
+) -> list:
+    """LLM이 image_url 등을 null로 버린 경우 tool 결과에서 채운다.
+
+    전체 메시지에서 list 형태의 ToolMessage(top_menus / filter_menus 결과)를 스캔해
+    menu_id가 일치하는 항목의 누락 필드를 보강한다.
+    """
+    from domain.order_request import RecommendedMenu
+
+    # tool 결과에서 menu_id → 메뉴 데이터 맵 빌드
+    tool_menu_map: dict[int, dict] = {}
+    for msg in messages:
+        if not isinstance(msg, ToolMessage):
+            continue
+        data = _parse_mcp_tool_content(msg.content)
+        if not isinstance(data, list):
+            continue
+        for item in data:
+            if isinstance(item, dict) and "menu_id" in item:
+                tool_menu_map[item["menu_id"]] = item
+            # 키 이름이 menuid인 경우도 처리
+            elif isinstance(item, dict) and "menuid" in item:
+                tool_menu_map[item["menuid"]] = item
+
+    if not tool_menu_map:
+        return recommendations
+
+    enriched = []
+    for rec in recommendations:
+        tool_data = tool_menu_map.get(rec.menu_id)
+        if tool_data is None:
+            enriched.append(rec)
+            continue
+        enriched.append(RecommendedMenu(
+            menu_id=rec.menu_id,
+            name=rec.name or tool_data.get("name"),
+            price=rec.price or tool_data.get("price", 0),
+            image_url=rec.image_url or tool_data.get("image_url") or tool_data.get("imageurl"),
+            restaurant_name=rec.restaurant_name or tool_data.get("restaurant_name") or tool_data.get("restaurantname"),
+            floor=rec.floor or tool_data.get("floor"),
+            quantity_sold=rec.quantity_sold or tool_data.get("quantity_sold") or tool_data.get("quantitysold"),
+        ))
+    return enriched
 
 
 def _apply_menu_options_from_messages(
@@ -513,7 +569,8 @@ def _extract_json_block(raw: str) -> Optional[str]:
     우선순위:
     1. ```json ... ``` 블록이 있으면 그 안의 내용만 추출
     2. 전체 문자열이 JSON이면 그대로 반환
-    3. 없으면 None 반환
+    3. 텍스트 중간에 { 가 포함된 경우 첫 번째 { 부터 JSON 파싱 시도
+    4. 없으면 None 반환
     """
     text = raw.strip()
     if "```json" in text:
@@ -529,7 +586,30 @@ def _extract_json_block(raw: str) -> Optional[str]:
             return candidate
     if text.startswith("{"):
         return text
+    # 텍스트 + JSON 혼합 패턴 처리 (예: "안내 문구\n{...}")
+    brace_idx = text.find("{")
+    if brace_idx != -1:
+        candidate = text[brace_idx:]
+        try:
+            json.loads(candidate)
+            return candidate
+        except Exception:
+            pass
     return None
+
+
+def _normalize_rec_keys(item: dict) -> dict:
+    """LLM이 camelCase 또는 underscore 없이 반환한 추천 메뉴 키를 정규화한다.
+
+    예: menuid → menu_id, imageurl → image_url, restaurantname → restaurant_name
+    """
+    _KEY_MAP = {
+        "menuid":         "menu_id",
+        "imageurl":       "image_url",
+        "restaurantname": "restaurant_name",
+        "quantitysold":   "quantity_sold",
+    }
+    return {_KEY_MAP.get(k, k): v for k, v in item.items()}
 
 
 def _parse_agent_reply(
@@ -571,7 +651,7 @@ def _parse_agent_reply(
 
         # 값이 null 이면 키가 있어도 건너뛴다 (null 순회/인덱싱 시 예외 → 원본 JSON 노출 버그 방지)
         if data.get("recommendations"):
-            recommendations = [RecommendedMenu(**item) for item in data["recommendations"]]
+            recommendations = [RecommendedMenu(**_normalize_rec_keys(item)) for item in data["recommendations"]]
 
         if data.get("menu_options"):
             mo = data["menu_options"]
