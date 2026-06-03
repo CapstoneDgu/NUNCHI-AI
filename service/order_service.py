@@ -230,6 +230,7 @@ class OrderService:
         config = {"configurable": {"thread_id": str(session_id)}}
         extractor = _MessageExtractor()
 
+        graph_error = False
         try:
             async for event in self._graph.astream_events(initial_state, config=config, version="v2"):
                 if event["event"] != "on_chat_model_stream":
@@ -247,8 +248,7 @@ class OrderService:
 
         except Exception as exc:
             logging.warning("[SSE 스트림 오류] session=%d err=%s", session_id, exc)
-            yield f"data: {json.dumps({'type': 'error', 'message': '죄송해요, 다시 한 번 말씀해 주시겠어요?'}, ensure_ascii=False)}\n\n"
-            return
+            graph_error = True
 
         # 그래프 완료 후 MemorySaver에서 최종 상태 조회
         final_state = await self._graph.aget_state(config)
@@ -259,7 +259,15 @@ class OrderService:
         current_step = final_state.values.get("current_step")
         action = final_state.values.get("action") or parsed_action
 
-        await save_message(self._spring, session_id, "ASSISTANT", reply)
+        # ASSISTANT 메시지 저장 — 그래프 오류 여부와 무관하게 항상 시도
+        try:
+            await save_message(self._spring, session_id, "ASSISTANT", reply)
+        except Exception as exc:
+            logging.warning("[ASSISTANT 메시지 저장 실패] session=%d err=%s", session_id, exc)
+
+        if graph_error:
+            yield f"data: {json.dumps({'type': 'error', 'message': '죄송해요, 다시 한 번 말씀해 주시겠어요?'}, ensure_ascii=False)}\n\n"
+            return
 
         if suggestions:
             self._schedule_prefetch(session_id, suggestions, mode)

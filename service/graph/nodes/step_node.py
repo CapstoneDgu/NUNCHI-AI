@@ -9,10 +9,9 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from langchain_openai import ChatOpenAI
-
 from adapter.factory import get_spring_adapter
 from core.config import get_settings
+from core.llm_factory import build_llm
 from kiosk_mcp.tools.session_tools import update_step
 
 if TYPE_CHECKING:
@@ -44,8 +43,7 @@ BROWSE / SELECT / CONFIGURE / CHECKOUT / null
 
 async def transition_step(state: "KioskState") -> dict:
     """LLM이 다음 주문 단계를 결정하고 Spring에 동기화한다."""
-    s = get_settings()
-    llm = ChatOpenAI(model=s.openai_model, api_key=s.openai_api_key, temperature=0)
+    llm = build_llm(temperature=0)
 
     messages = state.get("messages", [])
     current_step = state.get("current_step")

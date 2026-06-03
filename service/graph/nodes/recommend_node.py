@@ -4,11 +4,9 @@
 눈치 감지 노드(nunchi_node)에서도 이 노드로 연결된다.
 """
 
-from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
-from core.config import get_settings
-from core.model_context import get_current_model
+from core.llm_factory import build_llm
 from service.graph.state import KioskState
 from service.mcp_client import get_mcp_tools
 
@@ -80,9 +78,7 @@ Tool 선택 기준:
 
 async def run_recommend_agent(state: KioskState) -> dict:
     """추천 ReAct 에이전트를 실행하고 결과를 반환한다."""
-    s = get_settings()
-
-    llm = ChatOpenAI(model=get_current_model(s.openai_model), api_key=s.openai_api_key, temperature=0.2, streaming=True)
+    llm = build_llm(temperature=0.2, streaming=True)
 
     # 모드별 message 상세 수준 — 텍스트 모드는 카드가 안 보이므로 message 에 상세를 다 담아야 한다.
     mode = state.get("mode", "NORMAL")

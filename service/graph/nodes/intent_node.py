@@ -7,10 +7,8 @@
 import logging
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 
-from core.config import get_settings
-from core.model_context import get_current_model
+from core.llm_factory import build_llm
 from service.graph.state import KioskState
 
 _INTENT_SYSTEM_PROMPT = """
@@ -41,18 +39,9 @@ _INTENT_SYSTEM_PROMPT = """
 """.strip()
 
 
-def _build_llm() -> ChatOpenAI:
-    s = get_settings()
-    return ChatOpenAI(
-        model=get_current_model(s.openai_model),
-        api_key=s.openai_api_key,
-        temperature=0,
-    )
-
-
 async def classify_intent(state: KioskState) -> dict:
     """사용자 발화에서 의도를 분류해 state['intent']를 업데이트한다."""
-    llm = _build_llm()
+    llm = build_llm(temperature=0)
 
     if not state["messages"]:
         return {"intent": "order"}

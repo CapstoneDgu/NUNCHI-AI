@@ -5,12 +5,11 @@
 """
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
 from app.core.logging_timer import log_step
 from core.config import get_settings
-from core.model_context import get_current_model
+from core.llm_factory import build_llm
 from service.graph.state import KioskState
 from service.mcp_client import get_mcp_tools
 
@@ -193,12 +192,7 @@ async def run_order_agent(state: KioskState) -> dict:
     # LLM 객체 생성 시간 측정
     # 매 요청마다 ChatOpenAI 객체를 만드는 비용이 큰지 확인
     with log_step("order_agent_create_llm", request_id=request_id, session_id=session_id):
-        llm = ChatOpenAI(
-            model=get_current_model(s.openai_model),
-            api_key=s.openai_api_key,
-            temperature=0.3,
-            streaming=True,
-        )
+        llm = build_llm(temperature=0.3, streaming=True)
 
     # MCP Tool 목록 조회 시간 측정
     # get_mcp_tools()가 캐싱된 Tool 목록을 즉시 반환하는지 확인
