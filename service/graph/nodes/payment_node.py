@@ -4,11 +4,9 @@
 흐름을 순서대로 처리하는 ReAct 에이전트.
 """
 
-from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
-from core.config import get_settings
-from core.model_context import get_current_model
+from core.llm_factory import build_llm
 from service.graph.state import KioskState
 
 _PAYMENT_SYSTEM_PROMPT = """
@@ -55,11 +53,10 @@ reply 규칙:
 
 async def run_payment_agent(state: KioskState) -> dict:
     """결제 흐름 ReAct 에이전트를 실행하고 결과를 반환한다."""
-    s = get_settings()
     session_id = state["session_id"]
     prompt = _PAYMENT_SYSTEM_PROMPT + f"\n\n현재 세션 ID: {session_id}"
 
-    llm = ChatOpenAI(model=get_current_model(s.openai_model), api_key=s.openai_api_key, temperature=0, streaming=True)
+    llm = build_llm(temperature=0, streaming=True)
 
     # 결제 노드는 화면 안내만 한다 — 결제 완료용 MCP tool 을 주지 않아 백엔드 결제를 못 한다.
     agent = create_react_agent(llm, [], prompt=prompt)
