@@ -53,7 +53,6 @@ reply 규칙:
 
 async def run_payment_agent(state: KioskState) -> dict:
     """결제 흐름 ReAct 에이전트를 실행하고 결과를 반환한다."""
-    s = get_settings()
     session_id = state["session_id"]
     prompt = _PAYMENT_SYSTEM_PROMPT + f"\n\n현재 세션 ID: {session_id}"
 

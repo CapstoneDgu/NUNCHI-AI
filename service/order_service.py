@@ -13,7 +13,7 @@ import re
 import uuid
 from typing import AsyncGenerator, Optional
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from adapter.spring_adapter import SpringAdapter
 from app.core.logging_timer import log_step
@@ -152,10 +152,12 @@ class OrderService:
         messages = result.get("messages") or []
         if not messages:
             raise RuntimeError("그래프 실행 결과에 메시지가 없습니다")
-        raw = messages[-1].content
+        raw = _normalize_content(messages[-1].content)
 
         # JSON 응답 파싱 (추천 / 옵션 / 퀵바 suggestions / 화면 액션)
         reply, recommendations, menu_options, suggestions, parsed_action = _parse_agent_reply(raw)
+        # menu_options 보강/필터링: 누락 시 tool 결과로 복원, 담기 완료 시 선택 옵션만 표시
+        menu_options = _apply_menu_options_from_messages(menu_options, messages, reply)
         current_step = result.get("current_step")
         # 노드가 명시적으로 채운 action 우선, 없으면 LLM 응답 JSON 의 action 사용
         action = result.get("action") or parsed_action
@@ -253,7 +255,7 @@ class OrderService:
         # 그래프 완료 후 MemorySaver에서 최종 상태 조회
         final_state = await self._graph.aget_state(config)
         messages = final_state.values.get("messages", [])
-        raw = messages[-1].content if messages else ""
+        raw = _normalize_content(messages[-1].content) if messages else ""
 
         reply, recommendations, menu_options, suggestions, parsed_action = _parse_agent_reply(raw)
         current_step = final_state.values.get("current_step")
@@ -321,7 +323,7 @@ class OrderService:
             if not messages:
                 return
 
-            raw = messages[-1].content
+            raw = _normalize_content(messages[-1].content)
             # 결과 파싱
             reply, recommendations, menu_options, suggestions, parsed_action = _parse_agent_reply(raw)
             current_step = result.get("current_step")
@@ -354,6 +356,136 @@ _NO_PREFETCH_KEYWORDS = ("장바구니", "결제", "주문", "취소", "담아�
 def _is_prefetchable(text: str) -> bool:
     """프리패치 적합 여부를 반환한다. 실시간 상태 의존 발화는 False."""
     return not any(kw in text for kw in _NO_PREFETCH_KEYWORDS)
+
+
+def _parse_mcp_tool_content(content) -> dict | None:
+    """MCP ToolMessage content (str or list) → dict. 실패 시 None."""
+    try:
+        if isinstance(content, list):
+            content = "".join(
+                p.get("text", "") if isinstance(p, dict) else str(p) for p in content
+            )
+        return json.loads(content) if isinstance(content, str) else None
+    except Exception:
+        return None
+
+
+def _apply_menu_options_from_messages(
+    menu_options: Optional["MenuOptionsResponse"],
+    messages: list,
+    reply: str,
+) -> Optional["MenuOptionsResponse"]:
+    """menu_options를 tool 결과 기반으로 보강하거나 필터링한다.
+
+    1. 담기 완료 턴: add_cart_item이 호출됐으면 선택된 option_ids만 남긴다.
+    2. 옵션 표시 턴: menu_options가 null이면 menu_detail에서 복원한다.
+    """
+    from domain.order_request import MenuOptionGroup, MenuOptionItem, MenuOptionsResponse
+
+    last_human_idx = max(
+        (i for i, m in enumerate(messages) if isinstance(m, HumanMessage)), default=-1
+    )
+    current_turn = messages[last_human_idx + 1:]
+
+    cart_add_happened = False
+    selected_option_ids: list[int] = []
+
+    for msg in current_turn:
+        if isinstance(msg, ToolMessage):
+            data = _parse_mcp_tool_content(msg.content)
+            if data and ("item_id" in data or "cart_id" in data or "items" in data):
+                cart_add_happened = True
+        elif isinstance(msg, AIMessage):
+            for tc in getattr(msg, "tool_calls", []):
+                tc_name = tc.get("name", "") if isinstance(tc, dict) else getattr(tc, "name", "")
+                if "add_cart_item" in tc_name:
+                    tc_args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
+                    selected_option_ids = tc_args.get("option_ids", [])
+
+    # 담기 완료 턴: 선택된 옵션만 표시하거나 menu_options 그대로 반환
+    if cart_add_happened:
+        # menu_detail에서 선택된 옵션만 추려 빌드
+        menu_detail: dict | None = None
+        for msg in reversed(messages):
+            if isinstance(msg, ToolMessage):
+                data = _parse_mcp_tool_content(msg.content)
+                if data and "option_groups" in data and data["option_groups"]:
+                    menu_detail = data
+                    break
+
+        if menu_detail and selected_option_ids:
+            try:
+                filtered_groups = []
+                for g in menu_detail.get("option_groups", []):
+                    picked = [o for o in g["options"] if o["option_id"] in selected_option_ids]
+                    if picked:
+                        filtered_groups.append(MenuOptionGroup(
+                            group_id=g["group_id"],
+                            group_name=g["group_name"],
+                            is_required=g.get("is_required", False),
+                            max_select=g.get("max_select", 1),
+                            options=[MenuOptionItem(**o) for o in picked],
+                        ))
+                if filtered_groups:
+                    return MenuOptionsResponse(
+                        menu_id=menu_detail["menu_id"],
+                        menu_name=menu_detail.get("name", ""),
+                        option_groups=filtered_groups,
+                    )
+            except Exception:
+                pass
+        return menu_options  # None 또는 LLM이 이미 채운 값
+
+    # menu_options가 이미 있으면 그대로 반환 (옵션 표시 턴)
+    if menu_options is not None:
+        return menu_options
+
+    # menu_options 누락 → 전체 메시지에서 최근 menu_detail로 복원
+    menu_detail_for_restore: dict | None = None
+    for msg in reversed(messages):
+        if isinstance(msg, ToolMessage):
+            data = _parse_mcp_tool_content(msg.content)
+            if data and "option_groups" in data and data["option_groups"]:
+                menu_detail_for_restore = data
+                break
+
+    if menu_detail_for_restore is None:
+        return None
+
+    option_groups_raw = menu_detail_for_restore.get("option_groups", [])
+    if not option_groups_raw:
+        return None
+
+    try:
+        return MenuOptionsResponse(
+            menu_id=menu_detail_for_restore["menu_id"],
+            menu_name=menu_detail_for_restore.get("name", ""),
+            option_groups=[
+                MenuOptionGroup(
+                    group_id=g["group_id"],
+                    group_name=g["group_name"],
+                    is_required=g.get("is_required", False),
+                    max_select=g.get("max_select", 1),
+                    options=[MenuOptionItem(**o) for o in g["options"]],
+                )
+                for g in option_groups_raw
+            ],
+        )
+    except Exception:
+        return None
+
+
+def _normalize_content(content) -> str:
+    """LLM 응답 content를 str로 정규화한다.
+
+    Gemini는 list[dict] 형태로, OpenAI는 str 형태로 반환한다.
+    """
+    if isinstance(content, list):
+        return "".join(
+            part.get("text", "") if isinstance(part, dict) else str(part)
+            for part in content
+        )
+    return content or ""
 
 
 def _strip_markdown(text: str) -> str:
