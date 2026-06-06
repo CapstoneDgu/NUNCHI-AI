@@ -47,7 +47,7 @@ class _MessageExtractor:
     그 이후 값만 프론트로 흘려보낸다.
     """
 
-    _OPEN = re.compile(r'"message"\s*:\s*"')
+    _OPEN = re.compile(r'"(?:reply|message)"\s*:\s*"')
 
     def __init__(self) -> None:
         self._buf = ""
@@ -460,9 +460,9 @@ def _apply_menu_options_from_messages(
 
     # 담기 완료 턴: 선택된 옵션만 표시하거나 menu_options 그대로 반환
     if cart_add_happened:
-        # menu_detail에서 선택된 옵션만 추려 빌드
+        # 현재 턴에서만 menu_detail 탐색 (이전 턴 옵션 데이터 오염 방지)
         menu_detail: dict | None = None
-        for msg in reversed(messages):
+        for msg in reversed(current_turn):
             if isinstance(msg, ToolMessage):
                 data = _parse_mcp_tool_content(msg.content)
                 if data and "option_groups" in data and data["option_groups"]:
@@ -496,9 +496,9 @@ def _apply_menu_options_from_messages(
     if menu_options is not None:
         return menu_options
 
-    # menu_options 누락 → 전체 메시지에서 최근 menu_detail로 복원
+    # menu_options 누락 → 현재 턴에서 menu_detail로 복원 (이전 턴 오염 방지)
     menu_detail_for_restore: dict | None = None
-    for msg in reversed(messages):
+    for msg in reversed(current_turn):
         if isinstance(msg, ToolMessage):
             data = _parse_mcp_tool_content(msg.content)
             if data and "option_groups" in data and data["option_groups"]:

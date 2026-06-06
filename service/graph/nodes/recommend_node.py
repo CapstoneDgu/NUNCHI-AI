@@ -8,7 +8,7 @@ from langgraph.prebuilt import create_react_agent
 
 from core.llm_factory import build_llm
 from service.graph.state import KioskState
-from service.mcp_client import get_mcp_tools
+from service.mcp_client import get_recommend_tools
 
 _RECOMMEND_SYSTEM_PROMPT = """
 너는 키오스크 메뉴 추천 AI 어시스턴트다.
@@ -94,7 +94,7 @@ async def run_recommend_agent(state: KioskState) -> dict:
             "(마크다운 서식은 여전히 금지 — 순수 텍스트로만)"
         )
 
-    tools = get_mcp_tools()
+    tools = get_recommend_tools()
     agent = create_react_agent(llm, tools, prompt=_RECOMMEND_SYSTEM_PROMPT + verbosity)
     result = await agent.ainvoke({"messages": state["messages"]})
 

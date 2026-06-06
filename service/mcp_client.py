@@ -30,3 +30,19 @@ def get_mcp_tools() -> list[BaseTool]:
     if _tools is None:
         raise RuntimeError("MCP 클라이언트가 초기화되지 않았습니다. lifespan에서 initialize_mcp_client()를 먼저 호출하세요.")
     return list(_tools)
+
+
+# recommend_agent 에 허용할 tool 이름 — 조회 전용
+_RECOMMEND_ALLOWED = {
+    "tool_get_categories",
+    "tool_get_menus",
+    "tool_get_top_menus",
+    "tool_get_menu_detail",
+    "tool_filter_menus",
+    "tool_search_menus",
+}
+
+
+def get_recommend_tools() -> list[BaseTool]:
+    """추천 에이전트 전용 tool 목록 — 장바구니/주문/결제 tool 제외."""
+    return [t for t in get_mcp_tools() if t.name in _RECOMMEND_ALLOWED]

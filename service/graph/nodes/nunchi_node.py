@@ -26,5 +26,6 @@ async def detect_nunchi(state: KioskState) -> dict:
     # 추천 노드가 이 힌트를 보고 적절한 추천을 수행하도록 SystemMessage로 주입
     return {
         "messages": [SystemMessage(content=hint)],
-        "intent": "recommend",  # 다음 노드를 recommend_agent로 유도
+        # 라우팅은 kiosk_graph 고정 엣지(nunchi_detector → recommend_agent)로 결정되므로
+        # intent 를 별도로 세팅할 필요 없다.
     }
