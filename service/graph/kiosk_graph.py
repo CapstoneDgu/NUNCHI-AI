@@ -92,5 +92,15 @@ def build_kiosk_graph():
 
 
 def build_prefetch_graph():
-    """프리패치 전용 그래프 — 상태 저장 없이 매 호출을 독립적으로 실행한다."""
-    return _build_graph(with_checkpointer=False)
+    """프리패치 전용 그래프 — recommend_agent만 실행한다.
+
+    order_agent / payment_agent는 tool_add_cart_item 등 상태 변경 tool을 호출할 수 있어
+    실제 cart를 오염시키므로 프리패치 그래프에서 완전히 제외한다.
+    """
+    graph = StateGraph(KioskState)
+    graph.add_node("recommend_agent", _timed_node("recommend_agent", run_recommend_agent))
+    graph.add_node("step_transition", _timed_node("step_transition", transition_step))
+    graph.set_entry_point("recommend_agent")
+    graph.add_edge("recommend_agent", "step_transition")
+    graph.add_edge("step_transition", END)
+    return graph.compile()

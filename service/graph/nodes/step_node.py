@@ -6,7 +6,9 @@ Spring에 동기화한다.
 
 from __future__ import annotations
 
+import json as _json
 import logging
+import re as _re
 from typing import TYPE_CHECKING
 
 from adapter.factory import get_spring_adapter
@@ -55,11 +57,24 @@ async def transition_step(state: "KioskState") -> dict:
         if not last_ai_msg and hasattr(msg, "type") and msg.type == "ai":
             content = msg.content
             try:
-                import json as _json
-                import re as _re
-                m = _re.search(r'\{.*\}', content, _re.DOTALL)
-                if m:
-                    data = _json.loads(m.group())
+                json_str = None
+                if "```json" in content:
+                    s = content.index("```json") + 7
+                    e = content.index("```", s)
+                    json_str = content[s:e].strip()
+                elif content.strip().startswith("{"):
+                    json_str = content.strip()
+                else:
+                    brace_idx = content.find("{")
+                    if brace_idx != -1:
+                        candidate = content[brace_idx:]
+                        try:
+                            _json.loads(candidate)
+                            json_str = candidate
+                        except Exception:
+                            pass
+                if json_str:
+                    data = _json.loads(json_str)
                     content = data.get("reply") or data.get("message") or content
             except Exception:
                 pass

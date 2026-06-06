@@ -5,12 +5,12 @@
 """
 
 import json as _json
+import re as _re
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.prebuilt import create_react_agent
 
 from app.core.logging_timer import log_step
-from core.config import get_settings
 from core.llm_factory import build_llm
 from service.graph.state import KioskState
 from service.mcp_client import get_mcp_tools
@@ -57,13 +57,22 @@ _ORDER_SYSTEM_PROMPT = """
 6. tool_add_cart_item 의 반환값을 반드시 확인한다. 오류가 있으면 사용자에게 알리고 재시도한다.
 
 [복수 메뉴 주문]
-사용자가 여러 메뉴를 동시에 말하면 메뉴마다 (search → detail → add) 순서를 각각 완료한다.
-각 메뉴의 add 결과를 확인한 뒤 다음 메뉴로 넘어간다.
-모든 메뉴 담기가 끝난 후 성공한 메뉴 목록만 응답에 포함한다.
-예) "가츠동이랑 콜라 주세요"
-  → tool_search_menus("가츠동") → tool_get_menu_detail → tool_add_cart_item (결과 확인)
-  → tool_search_menus("콜라") → tool_get_menu_detail → tool_add_cart_item (결과 확인)
-  → 성공한 메뉴만 담겼다고 응답
+사용자가 여러 메뉴를 동시에 말하면 반드시 아래 2단계 순서로 처리해라.
+
+★ 1단계 — 모든 메뉴에 대해 search → detail 을 먼저 완료한다.
+★ 2단계 — 처리 순서:
+   (A) 옵션이 없는 메뉴를 전부 먼저 tool_add_cart_item 으로 담는다. (담기 완료 확인 필수)
+   (B) 옵션이 있는 메뉴가 남아있으면 첫 번째 메뉴의 옵션 선택 UI를 표시한다.
+       → 나머지 옵션 메뉴는 이번 턴에서 처리하지 않는다. 사용자가 옵션 선택 후 다음 턴에서 담는다.
+
+예) "콜라랑 숯불삼겹솥밥 주세요"
+  1단계: tool_search_menus("콜라") → detail(옵션없음) / tool_search_menus("숯불삼겹솥밥") → detail(옵션있음)
+  2단계 (A): tool_add_cart_item("콜라", option_ids=[]) → 담기 확인
+  2단계 (B): 숯불삼겹솥밥 옵션 UI 표시 (reply에 콜라 언급 금지)
+
+[절대 금지 — 복수 메뉴 순서 위반]
+옵션 없는 메뉴를 담지 않은 채 옵션 있는 메뉴의 옵션을 먼저 표시하는 것은 엄격히 금지한다.
+반드시 옵션 없는 메뉴를 tool_add_cart_item 으로 먼저 담은 뒤 옵션 UI를 표시해라.
 
 [절대 금지 — 복수 메뉴 거짓 응답]
 복수 메뉴 중 일부만 tool_add_cart_item을 호출했으면서 전부 담겼다고 응답하지 마라.
@@ -243,140 +252,6 @@ _NORMAL_TONE = (
 )
 
 
-def _parse_tool_content(content) -> dict | None:
-    """ToolMessage content (str or list) → dict. 실패 시 None."""
-    try:
-        if isinstance(content, list):
-            content = "".join(
-                p.get("text", "") if isinstance(p, dict) else str(p) for p in content
-            )
-        return _json.loads(content) if isinstance(content, str) else None
-    except Exception:
-        return None
-
-
-def _patch_menu_options(messages: list) -> list:
-    """현재 턴에서 menu_options 가 누락됐을 때 tool 결과로부터 복원한다.
-
-    - 현재 턴 = 마지막 HumanMessage 이후의 메시지만 사용 (이전 턴 오염 방지)
-    - add_cart_item 이 호출됐으면 "담겼어요!" + 선택된 옵션으로 응답 빌드
-    - menu_detail 만 호출됐는데 LLM 이 menu_options 를 누락하면 옵션 선택 응답 빌드
-    """
-    if not messages:
-        return messages
-
-    last_ai = next((m for m in reversed(messages) if isinstance(m, AIMessage)), None)
-    if last_ai is None:
-        return messages
-
-    # 현재 턴의 메시지만 추출 (마지막 HumanMessage 이후)
-    last_human_idx = max(
-        (i for i, m in enumerate(messages) if isinstance(m, HumanMessage)), default=-1
-    )
-    current_turn = messages[last_human_idx + 1:]
-
-    # 마지막 사용자 메시지가 프론트 담기 완료 알림이면 후처리 스킵
-    last_human = messages[last_human_idx] if last_human_idx >= 0 else None
-    if last_human and "장바구니에 담겼어" in (last_human.content or ""):
-        return messages
-
-    menu_detail: dict | None = None
-    cart_add_result: dict | None = None
-    selected_option_ids: list[int] = []
-
-    for msg in current_turn:
-        if isinstance(msg, ToolMessage):
-            data = _parse_tool_content(msg.content)
-            if data is None:
-                continue
-            if "option_groups" in data:
-                menu_detail = data
-            if "item_id" in data or "cart_id" in data:
-                cart_add_result = data
-        elif isinstance(msg, AIMessage):
-            for tc in getattr(msg, "tool_calls", []):
-                if "add_cart_item" in tc.get("name", ""):
-                    selected_option_ids = tc.get("args", {}).get("option_ids", [])
-
-    def _replace_last_ai(new_content: str) -> list:
-        new_msgs = list(messages)
-        idx = len(new_msgs) - 1 - next(
-            i for i, m in enumerate(reversed(new_msgs)) if isinstance(m, AIMessage)
-        )
-        new_msgs[idx] = AIMessage(content=new_content)
-        return new_msgs
-
-    # 담기 완료: "담겼어요!" + 선택된 옵션 표시
-    if cart_add_result is not None:
-        menu_name = menu_detail.get("name", "") if menu_detail else ""
-        selected_options_payload = None
-        if menu_detail and selected_option_ids:
-            selected_groups = []
-            for g in menu_detail.get("option_groups", []):
-                picked = [o for o in g["options"] if o["option_id"] in selected_option_ids]
-                if picked:
-                    selected_groups.append({
-                        "group_id": g["group_id"],
-                        "group_name": g["group_name"],
-                        "is_required": g.get("is_required", False),
-                        "max_select": g.get("max_select", 1),
-                        "options": picked,
-                    })
-            if selected_groups:
-                selected_options_payload = {
-                    "menu_id": menu_detail["menu_id"],
-                    "menu_name": menu_name,
-                    "option_groups": selected_groups,
-                }
-        patched = _json.dumps({
-            "reply": f"{menu_name} 담겼어요!" if menu_name else "담겼어요!",
-            "menu_options": selected_options_payload,
-            "suggestions": ["장바구니 확인해줘", "메뉴 더 추가할게", "결제할게"],
-            "action": None,
-        }, ensure_ascii=False)
-        return _replace_last_ai(patched)
-
-    # 옵션 있는 메뉴 조회만 됐을 때: LLM이 menu_options 누락했으면 주입
-    if menu_detail is None:
-        return messages
-
-    try:
-        raw = last_ai.content
-        if isinstance(raw, list):
-            raw = "".join(p.get("text", "") if isinstance(p, dict) else str(p) for p in raw)
-        json_str = None
-        if "```json" in raw:
-            s = raw.index("```json") + 7
-            e = raw.index("```", s)
-            json_str = raw[s:e].strip()
-        elif raw.strip().startswith("{"):
-            json_str = raw.strip()
-        if json_str:
-            data = _json.loads(json_str)
-            if data.get("menu_options"):
-                return messages  # 이미 있음
-    except Exception:
-        pass
-
-    # menu_options 주입
-    options_flat = [
-        o["name"]
-        for g in menu_detail.get("option_groups", [])
-        for o in g.get("options", [])[:2]
-    ]
-    suggestions = [f"{n}로 할게" for n in options_flat[:2]] + ["이 메뉴 말고 다른 거 볼게"]
-    patched = _json.dumps({
-        "reply": "다음과 같은 옵션이 있어요! 원하시는 옵션을 선택해주세요.",
-        "menu_options": {
-            "menu_id": menu_detail.get("menu_id"),
-            "menu_name": menu_detail.get("name", ""),
-            "option_groups": menu_detail.get("option_groups", []),
-        },
-        "suggestions": suggestions[:3],
-        "action": None,
-    }, ensure_ascii=False)
-    return _replace_last_ai(patched)
-
 
 async def run_order_agent(state: KioskState) -> dict:
     """주문/장바구니 ReAct 에이전트를 실행하고 결과를 반환한다."""
@@ -396,9 +271,6 @@ async def run_order_agent(state: KioskState) -> dict:
     # 프롬프트 준비 시간 측정
     # 설정값 조회, 말투 선택, system_prompt 조립 구간이 오래 걸리는지 확인
     with log_step("order_agent_prepare_prompt", request_id=request_id, session_id=session_id):
-        s = get_settings()
-
-        # 말투 설정
         tone = _AVATAR_TONE if mode == "AVATAR" else _NORMAL_TONE
         system_prompt = tone + f"현재 session_id: {session_id}\n\n" + _ORDER_SYSTEM_PROMPT
 
@@ -422,13 +294,27 @@ async def run_order_agent(state: KioskState) -> dict:
     ):
         agent = create_react_agent(llm, tools, prompt=system_prompt)
 
-    # ReAct Agent 실행 시간 측정
-    # 실제 LLM 호출, Tool 선택, MCP Tool 호출, 최종 응답 생성이 이 구간에서 수행됨
-    # order_agent 전체 병목의 핵심 후보
-    # 장바구니 조회 발화면 메시지 직전에 강제 tool 호출 힌트 주입
-    _CART_QUERY_KEYWORDS = ("장바구니", "뭐 담", "담은 거", "담은게", "뭐담")
+    # ── 서버 사이드 담기 완료 알림 가드 ────────────────────────────────────────
+    # 프론트가 버튼으로 /ai/api/order/cart/add 를 직접 호출한 뒤
+    # "X 장바구니에 담겼어" 형태로 AI 에게 알림을 보내는 경우,
+    # LLM 에 넘기지 않고 즉시 응답을 반환해 이중 담기를 원천 차단한다.
+    _CART_ADD_NOTIFICATION = "장바구니에 담겼어"
     messages = list(state["messages"])
     last_human = next((m for m in reversed(messages) if isinstance(m, HumanMessage)), None)
+    if last_human and _CART_ADD_NOTIFICATION in (last_human.content or ""):
+        raw_name = last_human.content.split(_CART_ADD_NOTIFICATION)[0].strip()
+        menu_name = raw_name.split("(")[0].strip() if "(" in raw_name else raw_name
+        response = _json.dumps({
+            "reply": f"{menu_name} 담겼어요! 더 시키실 메뉴가 있나요?",
+            "menu_options": None,
+            "recommendations": None,
+            "suggestions": ["장바구니 확인해줘", "메뉴 더 추가할게", "결제할게"],
+            "action": None,
+        }, ensure_ascii=False)
+        return {"messages": [AIMessage(content=response)]}
+
+    # ── 장바구니 조회 발화: 강제 tool 호출 힌트 주입 ──────────────────────────
+    _CART_QUERY_KEYWORDS = ("장바구니", "뭐 담", "담은 거", "담은게", "뭐담")
     if last_human and any(kw in last_human.content for kw in _CART_QUERY_KEYWORDS):
         messages.insert(-1, SystemMessage(
             content="[시스템] 이전 tool_get_cart 결과는 무효다. 지금 즉시 tool_get_cart를 호출해서 최신 장바구니를 확인해라."
