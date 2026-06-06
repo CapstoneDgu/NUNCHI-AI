@@ -105,6 +105,21 @@ _ORDER_SYSTEM_PROMPT = """
   → tool_clear_cart(session_id=현재_session_id) 호출
   → "장바구니를 비웠어요. 처음부터 다시 주문해 드릴게요!" 응답
 
+[담기 완료 알림 처리 ★★ 모든 담기 규칙보다 최우선]
+사용자가 "X 장바구니에 담겼어", "X (옵션명) 장바구니에 담겼어" 형태로 말하면:
+→ 프론트엔드가 이미 Spring 카트에 직접 추가 완료한 상태다.
+→ 절대 tool_get_menu_detail 이나 tool_add_cart_item 을 호출하지 마라.
+→ 아래 JSON을 즉시 반환해라. menu_options 는 반드시 null.
+```json
+{
+  "reply": "<메뉴명> 담겼어요! 더 시키실 메뉴가 있나요?",
+  "menu_options": null,
+  "recommendations": null,
+  "suggestions": ["장바구니 확인해줘", "메뉴 더 추가할게", "결제할게"],
+  "action": null
+}
+```
+
 [메뉴 담기 — 옵션 처리 ★ 최우선 규칙]
 사용자가 메뉴를 담아달라고 하면(예: "X 담아줘", "X 추가", "X 하나", "X 줘"):
 1. tool_get_menu_detail 로 옵션을 확인한다.
