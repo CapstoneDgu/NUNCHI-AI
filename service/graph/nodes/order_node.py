@@ -275,6 +275,11 @@ def _patch_menu_options(messages: list) -> list:
     )
     current_turn = messages[last_human_idx + 1:]
 
+    # 마지막 사용자 메시지가 프론트 담기 완료 알림이면 후처리 스킵
+    last_human = messages[last_human_idx] if last_human_idx >= 0 else None
+    if last_human and "장바구니에 담겼어" in (last_human.content or ""):
+        return messages
+
     menu_detail: dict | None = None
     cart_add_result: dict | None = None
     selected_option_ids: list[int] = []
