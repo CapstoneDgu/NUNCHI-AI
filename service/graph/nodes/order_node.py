@@ -286,6 +286,22 @@ _NORMAL_TONE = (
     "말투: 간결하고 정확하게.\n\n"
 )
 
+# ── 모드 전용 행동 지침 — 공통 본문(_ORDER_SYSTEM_PROMPT) 뒤에 덧붙는다 ──────────
+# ★원칙1/★원칙2, JSON 형식, tool 사용법, 장바구니 흐름 등 공통 규칙은 두 모드가
+# 동일하게 따르되, 모드에 따라 실제로 달라져야 하는 행동(예: action 사용 범위,
+# 화면 제어 여부, reply 상세 수준)만 여기서 모드별 블록으로 분리해 추가한다.
+# 빈 문자열이면 추가 지침 없이 공통 본문 그대로 사용한다.
+_AVATAR_MODE_GUIDE = ""
+
+# TODO: 일반 모드 전용 지침 작성 위치
+#   예: action 을 언제 적극적으로 채울지, 화면 제어가 필요한 발화 패턴, reply 상세 수준 등
+#   작성 형식 예시:
+#   _NORMAL_MODE_GUIDE = (
+#       "\n\n[일반(텍스트 채팅) 모드 전용 지침]\n"
+#       "- ...\n"
+#   ).rstrip()
+_NORMAL_MODE_GUIDE = ""
+
 
 # ── 장바구니 담기 결과 검증 가드 ──────────────────────────────────────────────
 # LLM 이 "OO 담았어요" 라고 답하면서 실제로는 다른 메뉴를 담는 환각을 막기 위해,
@@ -425,7 +441,10 @@ async def run_order_agent(state: KioskState) -> dict:
     # 설정값 조회, 말투 선택, system_prompt 조립 구간이 오래 걸리는지 확인
     with log_step("order_agent_prepare_prompt", request_id=request_id, session_id=session_id):
         tone = _AVATAR_TONE if mode == "AVATAR" else _NORMAL_TONE
-        system_prompt = tone + f"현재 session_id: {session_id}\n\n" + _ORDER_SYSTEM_PROMPT
+        mode_guide = _AVATAR_MODE_GUIDE if mode == "AVATAR" else _NORMAL_MODE_GUIDE
+        system_prompt = (
+            tone + f"현재 session_id: {session_id}\n\n" + _ORDER_SYSTEM_PROMPT + mode_guide
+        )
 
     # LLM 객체 생성 시간 측정
     # 매 요청마다 ChatOpenAI 객체를 만드는 비용이 큰지 확인
