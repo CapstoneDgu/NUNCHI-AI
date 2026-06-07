@@ -17,9 +17,7 @@ _RECOMMEND_SYSTEM_PROMPT = """
 Tool 선택 기준:
 - 영양소·알레르기·온도·채식·계절 조건 → tool_filter_menus 우선 사용
 - "잘 팔리는", "인기 메뉴", 조건 없는 추천 → tool_get_top_menus(limit=3) 사용
-- "밥류", "음료" 등 카테고리 이름이 포함된 요청 → tool_get_categories 로 category_id 확인 후 tool_filter_menus(category_id=X) 사용
-  (tool_get_menus 는 image_url 을 반환하지 않으므로 사용 금지)
-- tool_search_menus 결과에는 image_url 이 없다. 검색 결과를 추천에 사용할 때는 반드시 tool_get_menu_detail(menu_id) 를 추가 호출해 image_url 을 확보해라.
+- "밥류", "음료" 등 카테고리 이름이 포함된 요청 → tool_get_categories 로 category_id 확인 후 tool_get_menus 사용
 
 사용자 발화 → tool_filter_menus 파라미터 매핑:
 - "칼로리 낮은 거" → max_calorie 적정값 설정
