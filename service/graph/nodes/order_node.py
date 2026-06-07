@@ -5,13 +5,16 @@
 """
 
 import json as _json
+import logging
 import re as _re
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.prebuilt import create_react_agent
 
 from app.core.logging_timer import log_step
+from adapter.factory import get_spring_adapter
 from core.llm_factory import build_llm
+from kiosk_mcp.tools.cart_tools import get_cart
 from service.graph.state import KioskState
 from service.mcp_client import get_mcp_tools
 
@@ -34,9 +37,23 @@ _ORDER_SYSTEM_PROMPT = """
 ```
 
 [금지 사항]
-- reply 필드에 옵션 목록이나 메뉴 상세를 텍스트로 나열하는 것은 엄격히 금지한다.
-- menu_options 가 존재할 때 reply 에는 짧은 안내 문구만 작성한다.
 - JSON 블록 없이 일반 텍스트로만 응답하는 것은 엄격히 금지한다.
+- (★원칙2) reply 필드에 옵션 목록·메뉴 상세를 텍스트로 나열하지 마라. menu_options 가 있을 때는
+  reply 에 짧은 안내 문구만 작성해라.
+
+[★원칙1 — 확인되지 않은 것을 사실처럼 말하지 마라] 모든 상황에 공통 적용되는 최우선 원칙. 이후 "(★원칙1)" 표시는 이 규칙을 가리킨다.
+- 메뉴를 담을 때: 대상 메뉴 전부에 대해 tool_add_cart_item 을 실제로 호출하고 성공 결과를 확인한
+  항목만 "담겼어요"라고 말해라. 일부만 호출했으면서 전부 담겼다고 답하는 것은 절대 금지한다.
+- 장바구니 상태를 답할 때: 직전 대화의 tool_get_cart 결과나 "담겼습니다"라는 발언이 있었더라도
+  그것을 근거로 추론하지 마라. 장바구니는 외부에서 언제든 바뀔 수 있으므로 매번 새로 tool_get_cart 를
+  호출해 그 결과만 신뢰해라.
+- 메뉴명·가격·옵션 등 모든 사실 정보는 반드시 Tool 조회 결과만 사용하고 임의로 만들지 마라.
+
+[★원칙2 — reply 에는 메뉴/옵션 상세를 나열하지 말고 구조화 필드에만 담아라] 이후 "(★원칙2)" 표시는 이 규칙을 가리킨다.
+- 옵션 목록·옵션 그룹 정보는 reply 에 텍스트로 풀어 쓰지 말고 menu_options 필드에만 담아라.
+  menu_options 를 null 로 둔 채 reply 에서 옵션을 설명하는 것도 금지한다.
+- 옵션이 없는 메뉴를 담을 때 "옵션 없이 담았어요", "기본 옵션으로 담았어요" 같은 표현도 금지한다.
+  사용자는 옵션 존재 여부를 모르므로 그냥 "X 담겼어요!"라고만 말해라.
 ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
 
 중요: Tool을 호출할 때 session_id가 필요한 Tool은 반드시 state에서 받은 session_id를 사용해라. 임의로 바꾸지 마라.
@@ -54,14 +71,14 @@ _ORDER_SYSTEM_PROMPT = """
 3. 검색 결과가 여럿이면 대화 맥락에서 가장 적합한 것을 선택한다.
 4. tool_get_menu_detail(menu_id=...) 을 호출해 옵션을 확인한다.
 5. tool_add_cart_item(session_id=..., menu_id=..., quantity=..., option_ids=[]) 으로 장바구니에 담는다.
-6. tool_add_cart_item 의 반환값을 반드시 확인한다. 오류가 있으면 사용자에게 알리고 재시도한다.
+6. tool_add_cart_item 의 반환값을 반드시 확인한다 (★원칙1). 오류가 있으면 사용자에게 알리고 재시도한다.
 
 [복수 메뉴 주문]
 사용자가 여러 메뉴를 동시에 말하면 반드시 아래 2단계 순서로 처리해라.
 
 ★ 1단계 — 모든 메뉴에 대해 search → detail 을 먼저 완료한다.
 ★ 2단계 — 처리 순서:
-   (A) 옵션이 없는 메뉴를 전부 먼저 tool_add_cart_item 으로 담는다. (담기 완료 확인 필수)
+   (A) 옵션이 없는 메뉴를 전부 먼저 tool_add_cart_item 으로 담는다. (★원칙1 — 호출·확인 필수)
    (B) 옵션이 있는 메뉴가 남아있으면 첫 번째 메뉴의 옵션 선택 UI를 표시한다.
        → 나머지 옵션 메뉴는 이번 턴에서 처리하지 않는다. 사용자가 옵션 선택 후 다음 턴에서 담는다.
 
@@ -74,14 +91,6 @@ _ORDER_SYSTEM_PROMPT = """
 옵션 없는 메뉴를 담지 않은 채 옵션 있는 메뉴의 옵션을 먼저 표시하는 것은 엄격히 금지한다.
 반드시 옵션 없는 메뉴를 tool_add_cart_item 으로 먼저 담은 뒤 옵션 UI를 표시해라.
 
-[절대 금지 — 복수 메뉴 거짓 응답]
-복수 메뉴 중 일부만 tool_add_cart_item을 호출했으면서 전부 담겼다고 응답하지 마라.
-모든 메뉴에 대해 tool_add_cart_item을 실제로 호출하고 결과를 확인한 뒤에만 "담겼어요"라고 응답해라.
-확인하지 않은 메뉴를 담겼다고 말하는 것은 엄격히 금지한다.
-[절대 금지 — 옵션 여부 언급]
-옵션이 없는 메뉴를 담을 때 "옵션 없이 담았어요", "기본 옵션으로 담았어요" 등 옵션을 언급하지 마라.
-사용자는 옵션 존재 여부를 모른다. 그냥 "X 담겼어요!"라고만 말해라.
-
 [루프백]
 장바구니에 담은 후 반드시 "더 시키실 메뉴가 있나요?" 라고 묻는다.
 - 있다 → tool_update_step(step="BROWSE") 호출 후 계속 진행
@@ -92,10 +101,8 @@ _ORDER_SYSTEM_PROMPT = """
 
 [장바구니 조회 / 수정 / 삭제]
 사용자가 "장바구니에 뭐 있어?", "담은 게 뭐야?", "뭐담았어?", "장바구니 확인해줘" 같이 현재 장바구니를 물으면
-반드시 tool_get_cart(session_id=...) 를 호출한 뒤 그 결과를 기반으로 답해라.
-[절대 금지] 이전 대화 기록에 tool_get_cart 결과가 이미 있어도 절대 재사용하지 마라. 장바구니는 외부에서 언제든 변경될 수 있으므로 매번 반드시 tool_get_cart를 새로 호출해야 한다.
-[절대 금지] 이전 대화에서 "담겼습니다"라고 말한 내용을 근거로 장바구니 상태를 추론하지 마라.
-장바구니 상태는 오직 방금 호출한 tool_get_cart 결과만 신뢰해라.
+반드시 tool_get_cart(session_id=...) 를 새로 호출한 뒤 그 결과만 근거로 답해라
+(★원칙1 — 이전 tool_get_cart 결과나 "담겼습니다" 발언 재사용·추론 절대 금지. 장바구니는 외부에서 언제든 바뀐다).
 - 항목이 없으면 "아직 장바구니가 비어 있어요."
 - 항목이 있으면 메뉴명·수량·금액을 가독성 있게 나열하고 총합도 알려줘.
 
@@ -132,9 +139,8 @@ _ORDER_SYSTEM_PROMPT = """
 [메뉴 담기 — 옵션 처리 ★ 최우선 규칙]
 사용자가 메뉴를 담아달라고 하면(예: "X 담아줘", "X 추가", "X 하나", "X 줘"):
 1. tool_get_menu_detail 로 옵션을 확인한다.
-2. 옵션이 없으면 option_ids=[] 로 바로 tool_add_cart_item 을 호출해 담은 뒤 아래 JSON을 반환한다.
-   [절대 금지] "옵션 없이 담았어요", "기본 옵션으로 담았어요" 같은 표현 금지.
-   옵션이 없는 메뉴는 그냥 "X 담겼어요!" 라고만 말해라. 사용자는 옵션 여부를 모르므로 언급하지 않는다.
+2. 옵션이 없으면 option_ids=[] 로 바로 tool_add_cart_item 을 호출해 담은 뒤(★원칙1) 아래 JSON을 반환한다.
+   (★원칙2) "옵션 없이 담았어요" 같은 표현 없이 그냥 "X 담겼어요!"라고만 말해라.
    ```json
    {
      "reply": "<메뉴명> 담겼어요!",
@@ -144,8 +150,7 @@ _ORDER_SYSTEM_PROMPT = """
    ```
 3. 옵션이 있으면 — 사용자가 옵션을 말했든 말하지 않았든 — 절대 바로 담지 마라.
    반드시 tool_add_cart_item 호출 전에 아래 JSON만 출력해라.
-   [절대 금지] reply에 옵션 목록을 텍스트로 나열하지 마라. 옵션 데이터는 반드시 menu_options 필드에만 담아라.
-   [절대 금지] menu_options를 null로 두고 reply에 옵션을 설명하는 행위는 엄격히 금지한다.
+   (★원칙2) reply에 옵션 목록을 나열하지 마라. 옵션 데이터는 menu_options 필드에만 담아라.
    [절대 금지] 이미 담긴 다른 메뉴를 reply에 언급하지 마라. 옵션 선택이 필요한 메뉴만 reply에 말해라.
    예) "콜라랑 숯불삼겹솥밥" 요청 시 → reply: "숯불삼겹솥밥 옵션을 선택해주세요." (콜라 언급 금지)
    ```json
@@ -173,7 +178,7 @@ _ORDER_SYSTEM_PROMPT = """
    - 선택한 옵션이 모든 옵션 그룹을 커버하는지 확인한다.
    - 아직 선택하지 않은 그룹이 있으면 → 담지 말고 남은 그룹의 옵션을 다시 물어봐라.
      예) "된장국으로 할게요" → 국 선택 그룹만 선택됨 → "공기밥 추가는 어떻게 할까요? 없음 또는 공기밥 추가 중 선택해주세요."
-   - 모든 그룹이 선택됐으면 해당 option_ids로 tool_add_cart_item 을 호출해 담은 뒤 아래 JSON을 반환한다.
+   - 모든 그룹이 선택됐으면 해당 option_ids로 tool_add_cart_item 을 호출해 담은 뒤(★원칙1) 아래 JSON을 반환한다.
    [절대 금지] 사용자가 명시하지 않은 옵션 그룹을 임의로 선택해서 담지 마라. 반드시 모든 그룹에 대해 사용자가 직접 선택했는지 확인해라.
    menu_options에는 사용자가 선택한 옵션만 포함해 어떤 옵션으로 담겼는지 표시해라.
    ```json
@@ -227,8 +232,7 @@ _ORDER_SYSTEM_PROMPT = """
 - option_groups 가 비어 있으면 JSON 응답 없이 바로 tool_add_cart_item 을 호출해라.
 - 메뉴를 장바구니에 담기 전에 반드시 tool_get_menu_detail을 먼저 호출해 옵션을 확인해라.
 - 옵션이 없으면 option_ids는 빈 배열([])로 전달해라.
-- 메뉴명이나 가격을 임의로 만들지 말고 반드시 Tool로 조회한 결과만 사용해라.
-- 담기 성공 여부는 반드시 Tool 반환값으로 확인하고, 성공한 항목만 응답에 포함해라.
+- 담기 성공 여부는 반드시 Tool 반환값으로 확인하고, 성공한 항목만 응답에 포함해라 (★원칙1).
 - [중요] 입력은 음성 인식(STT) 결과라 오타·오인식이 매우 잦다. 사용자가 말한 메뉴명이 정확히 일치하지 않아도
   절대 단정적으로 "그런 메뉴 없습니다" 하지 마라. 먼저 tool_get_categories + tool_get_menus 로 실제 메뉴 목록을
   조회한 뒤, 발음·표기가 가장 비슷한 메뉴를 찾아 "혹시 'OOO' 말씀이신가요?" 처럼 되물어 확인해라.
@@ -251,6 +255,124 @@ _NORMAL_TONE = (
     "말투: 간결하고 정확하게.\n\n"
 )
 
+
+# ── 장바구니 담기 결과 검증 가드 ──────────────────────────────────────────────
+# LLM 이 "OO 담았어요" 라고 답하면서 실제로는 다른 메뉴를 담는 환각을 막기 위해,
+# tool_add_cart_item 호출 직후 장바구니 응답에서 실제로 담긴 메뉴명을 확인하고
+# 최종 reply/menu_options 의 메뉴명이 다르면 코드가 직접 교정한다.
+# (LLM 재호출 없이 문자열 치환만 하므로 응답 시간에 미치는 영향은 거의 없다.)
+_MENU_ADDED_PATTERN = _re.compile(r"^(.{1,40}?)\s*(담겼어요|담았어요)")
+
+
+def _find_canonical_menu_name(cart_json: str, menu_id, option_ids) -> str | None:
+    """tool_add_cart_item 이 반환한 장바구니 데이터에서 실제로 담긴 메뉴명을 찾는다."""
+    try:
+        cart = _json.loads(cart_json)
+    except (TypeError, ValueError):
+        return None
+    wanted_options = set(option_ids or [])
+    for item in cart.get("items", []):
+        if item.get("menu_id") != menu_id:
+            continue
+        item_options = {opt.get("option_id") for opt in item.get("options", [])}
+        if item_options == wanted_options:
+            return item.get("menu_name")
+    return None
+
+
+def _extract_json_payload(content):
+    """AIMessage content 에서 JSON 페이로드를 파싱한다. (data, 코드블록여부) 반환."""
+    text = content if isinstance(content, str) else "".join(
+        part.get("text", "") if isinstance(part, dict) else str(part) for part in content
+    )
+    stripped = text.strip()
+    fenced = stripped.startswith("```")
+    json_text = stripped.strip("`").lstrip("json").strip() if fenced else stripped
+    try:
+        return _json.loads(json_text), fenced
+    except (TypeError, ValueError):
+        return None, fenced
+
+
+async def _verify_and_fix_cart_add_reply(messages: list, session_id: int) -> list:
+    """장바구니 담기 응답을 실제 데이터와 대조해 환각을 코드로 직접 교정한다.
+
+    1) tool_add_cart_item 을 호출했지만 reply/menu_options 의 메뉴명이 실제로 담긴
+       메뉴명과 다른 경우 (엉뚱한 메뉴를 담고 다른 이름으로 보고하는 환각) — 즉시 교정.
+    2) tool_add_cart_item 호출 자체가 없었는데 "OO 담겼어요" 라고 답한 경우
+       (호출도 없이 성공했다고 거짓 보고하는 환각) — tool_get_cart 로 사실관계를
+       확인한 뒤에만 정직한 안내문으로 교정한다 (불필요한 추가 호출 최소화).
+    """
+    tool_call_args: dict[str, dict] = {}
+    for m in messages:
+        if isinstance(m, AIMessage) and getattr(m, "tool_calls", None):
+            for tc in m.tool_calls:
+                if tc.get("name") == "tool_add_cart_item":
+                    tool_call_args[tc["id"]] = tc.get("args", {})
+
+    canonical_by_menu_id: dict[int, str] = {}
+    for m in messages:
+        if isinstance(m, ToolMessage) and m.tool_call_id in tool_call_args:
+            args = tool_call_args[m.tool_call_id]
+            name = _find_canonical_menu_name(m.content, args.get("menu_id"), args.get("option_ids"))
+            if name:
+                canonical_by_menu_id[args["menu_id"]] = name
+
+    final = messages[-1]
+    if not isinstance(final, AIMessage):
+        return messages
+    data, fenced = _extract_json_payload(final.content)
+    if not isinstance(data, dict):
+        return messages
+
+    changed = False
+    reply = data.get("reply")
+    menu_options = data.get("menu_options")
+    match = _MENU_ADDED_PATTERN.match(reply.strip()) if isinstance(reply, str) else None
+
+    if canonical_by_menu_id:
+        if isinstance(menu_options, dict) and menu_options.get("menu_id") in canonical_by_menu_id:
+            canonical = canonical_by_menu_id[menu_options["menu_id"]]
+            claimed = menu_options.get("menu_name")
+            if claimed and claimed != canonical:
+                menu_options["menu_name"] = canonical
+                if isinstance(reply, str) and claimed in reply:
+                    reply = reply.replace(claimed, canonical)
+                    data["reply"] = reply
+                changed = True
+                logging.warning("[장바구니 담기 검증] menu_options 메뉴명 환각 교정: %r → %r", claimed, canonical)
+        elif len(canonical_by_menu_id) == 1 and match:
+            canonical = next(iter(canonical_by_menu_id.values()))
+            claimed = match.group(1).strip()
+            if claimed != canonical:
+                data["reply"] = reply.replace(claimed, canonical, 1)
+                changed = True
+                logging.warning("[장바구니 담기 검증] reply 메뉴명 환각 교정: %r → %r", claimed, canonical)
+    elif match:
+        # tool_add_cart_item 호출이 전혀 없었는데 "담겼어요" 라고 답한 경우 — 사실관계 확인 후 교정
+        claimed = match.group(1).strip()
+        try:
+            cart = await get_cart(get_spring_adapter(), session_id)
+            actually_added = any(claimed in item.menu_name or item.menu_name in claimed for item in cart.items)
+        except Exception:
+            actually_added = True  # 조회 실패 시에는 섣불리 교정하지 않는다 (오탐 방지)
+
+        if not actually_added:
+            data["reply"] = f"죄송해요, {claimed} 담는 데 문제가 있었어요. 다시 한 번 말씀해 주시겠어요?"
+            data["menu_options"] = None
+            data["recommendations"] = None
+            data["suggestions"] = ["다시 담아줘", "장바구니 확인해줘", "메뉴 추천해줘"]
+            data["action"] = None
+            changed = True
+            logging.warning("[장바구니 담기 검증] '담겼어요' 거짓 보고 감지 — 정직한 안내로 교정: claimed=%r", claimed)
+
+    if not changed:
+        return messages
+
+    new_text = _json.dumps(data, ensure_ascii=False)
+    if fenced:
+        new_text = f"```json\n{new_text}\n```"
+    return messages[:-1] + [AIMessage(content=new_text)]
 
 
 async def run_order_agent(state: KioskState) -> dict:
@@ -329,6 +451,6 @@ async def run_order_agent(state: KioskState) -> dict:
         result = await agent.ainvoke({"messages": messages})
 
     # LangGraph 다음 단계로 넘길 결과 생성 시간 측정
-    # agent 실행 결과에서 messages만 추출해 반환
+    # agent 실행 결과에서 messages만 추출하고, 장바구니 담기 결과를 검증·교정한 뒤 반환
     with log_step("order_agent_build_result", request_id=request_id, session_id=session_id):
-        return {"messages": result["messages"]}
+        return {"messages": await _verify_and_fix_cart_add_reply(result["messages"], session_id)}
