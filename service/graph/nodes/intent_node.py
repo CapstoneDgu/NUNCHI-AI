@@ -4,9 +4,10 @@
 분류 결과: order / payment / recommend / hesitation
 """
 
+import json
 import logging
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from core.llm_factory import build_llm
 from service.graph.state import KioskState
@@ -37,7 +38,30 @@ _INTENT_SYSTEM_PROMPT = """
 - "아니요" 단독 발화는 대화 맥락을 보고 판단하되, 옵션 선택 중이면 order 로 분류한다.
 - clarify 는 음식/주문과 전혀 관련 없는 발화에만 쓴다. 조금이라도 메뉴·주문 관련이면 order 로 분류한다.
 - 애매하면 clarify 가 아니라 order 로 분류한다. (거절보다 주문을 도와주는 쪽으로)
+
+[참고: 직전 AI 메시지]
+"네", "응", "아니요", "그래" 처럼 그 자체로는 의미가 없는 짧은 대답은 반드시 직전 AI 메시지가 무엇을 물었는지를 보고 판단해라.
+- 직전 AI가 "담아드릴까요?", "결제 진행할까요?", "옵션은 어떻게 해드릴까요?" 등 주문/결제/옵션 관련 질문을 했다면 → 그에 대한 긍정/부정 답변은 order 또는 payment 로 분류한다 (clarify 아님).
+- 직전 AI 메시지가 없거나 주문과 무관한 질문이었다면 기존 기준대로 판단한다.
 """.strip()
+
+
+def _extract_ai_reply_text(content) -> str:
+    """AI 메시지 content에서 분류기에 보여줄 짧은 텍스트를 뽑아낸다.
+
+    order_agent/recommend_agent 는 JSON 코드 블록으로 응답하므로 그 안의
+    reply/message 필드만 추출하고, JSON 이 아니면 원문을 그대로 사용한다.
+    """
+    if isinstance(content, list):
+        content = "".join(part.get("text", "") if isinstance(part, dict) else str(part) for part in content)
+    text = (content or "").strip()
+    if text.startswith("```"):
+        text = text.strip("`").lstrip("json").strip()
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        return text
+    return data.get("reply") or data.get("message") or text
 
 
 async def classify_intent(state: KioskState) -> dict:
@@ -50,16 +74,28 @@ async def classify_intent(state: KioskState) -> dict:
     if not isinstance(last_message, HumanMessage):
         return {"intent": "order"}  # 사용자 발화가 아니면 기본값
 
+    # "네", "응" 같은 짧은 대답은 그 자체로 의미가 없으므로
+    # 직전 AI 메시지(무엇을 물었는지)를 함께 보여줘 분류 정확도를 높인다.
+    prev_ai_message = next(
+        (m for m in reversed(state["messages"][:-1]) if isinstance(m, AIMessage)),
+        None,
+    )
+    classifier_input = last_message.content
+    if prev_ai_message is not None:
+        prev_reply = _extract_ai_reply_text(prev_ai_message.content)
+        if prev_reply:
+            classifier_input = f"[직전 AI 메시지] {prev_reply}\n[현재 사용자 발화] {last_message.content}"
+
     response = await llm.ainvoke([
         SystemMessage(content=_INTENT_SYSTEM_PROMPT),
-        HumanMessage(content=last_message.content),
+        HumanMessage(content=classifier_input),
     ])
 
     intent = response.content.strip().lower()
     if intent not in ("order", "payment", "recommend", "hesitation", "clarify"):
         intent = "order"  # 분류 실패 시 기본값 — 거절(clarify)보다 주문으로 도와준다
 
-    logging.debug("[의도 분류] 입력: %r → intent: %s", last_message.content, intent)
+    logging.debug("[의도 분류] 입력: %r → intent: %s", classifier_input, intent)
 
     return {"intent": intent}
 

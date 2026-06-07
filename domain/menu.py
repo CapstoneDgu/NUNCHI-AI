@@ -61,6 +61,7 @@ class MenuSummary(BaseModel):
     name: str
     price: int
     is_sold_out: bool = Field(alias="isSoldOut")
+    image_url: Optional[str] = Field(default=None, alias="imageUrl")
     spicy_level: int = Field(default=0, alias="spicyLevel")
     temperature_type: str = Field(default="HOT", alias="temperatureType")
     vegetarian_type: str = Field(default="NONE", alias="vegetarianType")
