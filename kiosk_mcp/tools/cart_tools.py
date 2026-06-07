@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from pydantic import ValidationError
@@ -7,6 +8,12 @@ from pydantic import ValidationError
 from adapter.spring_adapter import SpringAdapter
 from core.exceptions import SpringApiError
 from domain.cart import CartResponse
+
+# 동시 담기 요청으로 Spring 세션 락 획득에 실패하면 409(CART_LOCK_ACQUIRE_FAILED)를 반환한다.
+# Spring 측 확인 결과 락 획득 실패 시 카트에는 아무 변경도 가해지지 않으므로(멱등) 안전하게 재시도 가능하다.
+# 단, Spring 쪽 락 대기 자체가 최대 약 3초이므로 재시도는 1회·짧은 대기로 제한한다 (3초 응답 목표 고려).
+_CART_LOCK_CONFLICT_STATUS = 409
+_CART_LOCK_RETRY_DELAY_SEC = 0.3
 
 
 async def add_cart_item(
@@ -23,7 +30,18 @@ async def add_cart_item(
         "quantity": quantity,
         "optionIds": option_ids,
     }
-    data = await spring.post("/api/orders/cart/items", body)
+    try:
+        data = await spring.post("/api/orders/cart/items", body)
+    except SpringApiError as exc:
+        if exc.status_code != _CART_LOCK_CONFLICT_STATUS:
+            raise
+        logging.warning(
+            "[장바구니 담기 락 충돌] session_id=%s menu_id=%s — %.1f초 후 재시도",
+            session_id, menu_id, _CART_LOCK_RETRY_DELAY_SEC,
+        )
+        await asyncio.sleep(_CART_LOCK_RETRY_DELAY_SEC)
+        data = await spring.post("/api/orders/cart/items", body)
+
     try:
         return CartResponse.model_validate(data)
     except ValidationError as exc:
