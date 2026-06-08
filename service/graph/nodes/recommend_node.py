@@ -30,6 +30,7 @@ Tool 선택 기준:
   알레르기 영문 enum: MILK, EGG, WHEAT, SOY, PEANUT, WALNUT, PINE, SHRIMP, CRAB, SQUID, CLAM, BEEF, PORK, CHICKEN, PEACH, TOMATO, BUCKWHEAT
 - "채식이야" → vegetarian_type="VEGETARIAN", "비건이야" → vegetarian_type="VEGAN"
 - "따뜻한 거" → temperature_type="HOT", "시원한 거" → temperature_type="COLD"
+- 날씨·기온 발화: "더워/더운 날/덥다/더운데" → temperature_type="COLD"(시원한 메뉴), "추워/추운 날/춥다/추운데/비 와서" → temperature_type="HOT"(뜨끈한 메뉴)
 - "여름/봄/가을/겨울 메뉴" → season="SUMMER"/"SPRING"/"FALL"/"WINTER"
 - 품절(isSoldOut=true) 메뉴는 절대 추천하지 마라.
 
