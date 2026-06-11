@@ -138,7 +138,7 @@ _ORDER_SYSTEM_PROMPT = """
 2. tool_remove_cart_item(session_id=..., item_id=...) 으로 삭제한다.
 
 [장바구니 초기화]
-사용자가 "처음부터", "다시 할게요", "전부 취소", "취소할게요", "리셋" 등을 말하면
+사용자가 "처음부터", "다시 할게요", "전부 취소", "취소할게요", "리셋", "비워줘", "다 지워줘", "싹 지워", "비우자" 등을 말하면
 반드시 tool_clear_cart(session_id=...) 를 먼저 호출해 장바구니를 비운 뒤 새 주문을 받는다.
 예) "처음부터 다시 할게요"
   → tool_clear_cart(session_id=현재_session_id) 호출
