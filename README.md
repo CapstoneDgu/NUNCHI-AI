@@ -133,7 +133,7 @@ LangGraph로 구성된 상태 기반 에이전트입니다. 노드 단위로 의
 
 |  |  |  |
 |--------|--------|--------|
-| 효동 | <img src="https://github.com/hyodongg.png" alt="효동" width="100"> | <ul><li>FastAPI AI 서버 설계 및 개발</li><li>LangGraph 주문 에이전트 구현 (모드별 행동 지침 분리)</li><li>MCP Tool 설계 및 구현</li><li>Smithery MCP 서버 배포 및 연동</li></ul> |
+| 조효동 | <img src="https://github.com/hyodongg.png" alt="효동" width="100"> | <ul><li>FastAPI AI 서버 설계 및 개발</li><li>LangGraph 주문 에이전트 구현 (모드별 행동 지침 분리)</li><li>MCP Tool 설계 및 구현</li><li>Smithery MCP 서버 배포 및 연동</li></ul> |
 
 <br/>
 <br/>
