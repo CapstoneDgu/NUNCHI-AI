@@ -1,7 +1,6 @@
-<!-- 배너 이미지 삽입 위치 -->
-<!-- <img src="배너이미지URL" alt="배너" width="100%"/> -->
+# NUNCHI-AI
+![CI/CD](https://github.com/CapstoneDgu/NUNCHI-AI/actions/workflows/deploy.yml/badge.svg?branch=main)
 
-<br/>
 <br/>
 
 # 1. Project Overview (프로젝트 개요)
