@@ -1,4 +1,4 @@
-name: Build and Push AI Server to ECR
+name: CI/CD
 
 on:
   push:
