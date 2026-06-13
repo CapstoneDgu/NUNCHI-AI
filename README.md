@@ -133,7 +133,7 @@ LangGraph로 구성된 상태 기반 에이전트입니다. 노드 단위로 의
 |  |  |  |
 |--------|--------|--------|
 | 조효동 | <img src="https://github.com/hyodongg.png" alt="효동" width="100"> | <ul><li>FastAPI AI 서버 설계 및 개발</li><li>LangGraph 주문 에이전트 구현 (모드별 행동 지침 분리)</li><li>MCP Tool 설계 및 구현</li><li>Smithery MCP 서버 배포 및 연동</li></ul> |
-| 이현노 | <img src="https://github.com/leehyunro123.png" alt="현노" width="100"> | <ul><li><b>음성 원격조작 응답 채널(action)</b> 및 clarify 의도 분기·노드 UI 지침 구현</li><li><b>일반 모드 전용 프롬프트(_NORMAL_MODE_GUIDE)</b> 설계 — 화면 제어/주문 플로우 지침</li><li><b>의도 분류 튜닝</b> — 날씨→추천 라우팅, 메뉴 문의→order, 주문 확인 완료→payment, 단순 인사 처리</li><li>결제 노드 화면 안내 전환 및 추천·응답 파싱 보완</li></ul> |
+| 이현노 | <img src="https://github.com/leehyunro123.png" alt="현노" width="100"> | <ul><li>음성 원격조작 응답 채널(action) 및 clarify 의도 분기 구현</li><li>일반 모드 전용 프롬프트 설계 (화면 제어·주문 플로우 지침)</li><li>의도 분류 튜닝 (추천·주문·결제 라우팅 정리)</li><li>결제 노드 화면 안내 전환 및 추천·응답 파싱 보완</li></ul> |
 
 <br/>
 <br/>
