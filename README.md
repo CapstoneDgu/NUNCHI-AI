@@ -14,8 +14,8 @@
 | 조효동 | 이현노 | 임현우 | 임호영 |
 |:------:|:------:|:------:|:------:|
 | <img src="https://github.com/hyodongg.png" alt="효동" width="150"> | <img src="https://github.com/leehyunro123.png" alt="현노" width="150"> | <img src="https://github.com/identicons/placeholder.png" alt="임현우" width="150"> | <img src="https://github.com/identicons/placeholder.png" alt="임호영" width="150"> |
-| BE / AI | AI · 음성플로우 | FE | FE |
-| [GitHub](https://github.com/hyodongg) | [GitHub](https://github.com/leehyunro123) | [GitHub](https://github.com/sexybugmaster) | [GitHub](https://github.com/pyeree) |
+| BE / AI | AI / 음성플로우 |
+| [GitHub](https://github.com/hyodongg) | [GitHub](https://github.com/leehyunro123) 
 
 
 <br/>
@@ -133,7 +133,7 @@ LangGraph로 구성된 상태 기반 에이전트입니다. 노드 단위로 의
 |  |  |  |
 |--------|--------|--------|
 | 조효동 | <img src="https://github.com/hyodongg.png" alt="효동" width="100"> | <ul><li>FastAPI AI 서버 설계 및 개발</li><li>LangGraph 주문 에이전트 구현 (모드별 행동 지침 분리)</li><li>MCP Tool 설계 및 구현</li><li>Smithery MCP 서버 배포 및 연동</li></ul> |
-| 이현노 | <img src="https://github.com/leehyunro123.png" alt="현노" width="100"> | <ul><li>음성 원격조작 응답 채널(action) 및 clarify 의도 분기 구현</li><li>일반 모드 전용 프롬프트 설계 (화면 제어·주문 플로우 지침)</li><li>의도 분류 튜닝 (추천·주문·결제 라우팅 정리)</li><li>결제 노드 화면 안내 전환 및 추천·응답 파싱 보완</li></ul> |
+| 이현노 | <img src="https://github.com/leehyunro123.png" alt="현노" width="100"> | <ul><li>음성 원격조작 응답 액션 추가 및 의도 분기 구현</li><li>일반 모드 전용 프롬프트 설계 </li><li>의도 분류 튜닝 </li><li>결제 노드 화면 안내 전환 및 추천, 응답 파싱 보완</li></ul> |
 
 <br/>
 <br/>
