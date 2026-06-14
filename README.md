@@ -155,19 +155,59 @@ LangGraph로 구성된 상태 기반 에이전트입니다. 노드 단위로 의
 # 6. Project Structure (프로젝트 구조)
 
 ```plaintext
-NUNCHI-AI/
-├── app/                # FastAPI 진입점, 라우터 (/api/**)
-│   ├── main.py
-│   └── api/
-├── service/            # 음성 파이프라인, 에이전트, 추천 / 퀵바 로직
-├── adapter/            # OpenAI / Spring 백엔드 연동
-├── kiosk_mcp/          # MCP 서버 및 Tool 구현
-│   └── tools/          # DB / UI / Payment Tool
-├── domain/             # Pydantic 모델
-├── core/               # 설정, 예외, 공통 유틸
-├── .claude/            # 개발 컨텍스트 문서 (PROJECT.md, CONVENTION.md)
-├── requirements.txt
-└── Dockerfile
+
+  capstone_ai/
+  ├── app/                    # FastAPI 진입점
+  │   ├── main.py             # 서버 시작, 라우터 등록, 에러 핸들러
+  │   └── api/
+  │       ├── order.py        # order api 진입점
+  │       ├── cart.py         # cart api 진입점
+  │       └── voice.py        # 음성 관련
+  │
+  ├── service/                # 비즈니스 로직
+  │   ├── agent_service.py    # AI 대화 오케스트레이션
+  │   ├── order_service.py    # 주문 처리
+  │   ├── mcp_client.py       # MCP 서버와 통신
+  │   └── graph/              # LangGraph 그래프 (AI 흐름 엔진)
+  │       ├── kiosk_graph.py  # 그래프 조립
+  │       ├── state.py        # 대화 상태 구조체 (KioskState)
+  │       └── nodes/          # 각 처리 단계 (노드)
+  │           ├── intent_node.py    # 의도 분류
+  │           ├── order_node.py     # 주문 처리
+  │           ├── recommend_node.py # 메뉴 추천
+  │           ├── payment_node.py   # 결제
+  │           ├── nunchi_node.py    # 눈치 감지 (망설임 탐지)
+  │           ├── clarify_node.py   # 모호한 발화 명확화
+  │           └── step_node.py      # 단계 전환
+  │
+  ├── adapter/                # 외부 연동 계층
+  │   ├── openai_adapter.py   # GPT/Whisper/TTS 호출
+  │   ├── spring_adapter.py   # Spring 백엔드 HTTP 호출
+  │   ├── ports.py            # 인터페이스 정의 (추상화)
+  │   └── factory.py          # 어떤 adapter 쓸지 결정
+  │
+  ├── kiosk_mcp/              # MCP 서버 (포트 8090)
+  │   ├── mcp_server.py       # FastMCP 서버 진입점
+  │   └── tools/
+  │       ├── menu_tools.py   # get_menus, get_menu_detail
+  │       ├── cart_tools.py   # add_to_cart, remove_from_cart
+  │       ├── order_tools.py  # confirm_order
+  │       ├── payment_tools.py # process_payment
+  │       └── session_tools.py # complete_session
+  │
+  ├── domain/                 # Pydantic 모델 (데이터 구조 정의)
+  │   ├── session.py          # 세션 상태
+  │   ├── menu.py             # 메뉴 구조
+  │   ├── order.py            # 주문 구조
+  │   ├── cart.py             # 장바구니
+  │   ├── payment.py          # 결제
+  │   └── conversation.py     # 대화 히스토리
+  │
+  └── core/                   # 설정/공통 유틸
+      ├── config.py           # 환경변수 설정
+      ├── exceptions.py       # 공통 예외 클래스
+      ├── llm_factory.py      # LLM 인스턴스 생성
+      └── prefetch_cache.py   # 추천 캐시
 ```
 
 <br/>
